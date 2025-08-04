@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title mb-0">User Details: {{ user.username }}</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Basic Information</h6>
+                            <table class="table table-borderless">
+                                <tr>
+                                    <td><strong>User ID:</strong></td>
+                                    <td>{{ user.id }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Username:</strong></td>
+                                    <td>{{ user.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Email:</strong></td>
+                                    <td>{{ user.email }}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td>
+                                        <span class="badge {% if user.is_active %}badge-success{% else %}badge-danger{% endif %}">
+                                            {% if user.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Created:</strong></td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else 'N/A' }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Roles & Permissions</h6>
+                            <div class="mb-3">
+                                {% if user.roles %}
+                                    {% for role in user.roles %}
+                                    <span class="badge badge-primary me-1 mb-1">
+                                        {{ role.name.replace('_', ' ').title() }}
+                                    </span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">No roles assigned</span>
+                                {% endif %}
+                            </div>
+                            
+                            <h6>Admin Status</h6>
+                            <p>
+                                {% if user.is_admin() %}
+                                    <span class="badge badge-warning">Administrator</span>
+                                    <small class="text-muted d-block">This user has administrative privileges</small>
+                                {% else %}
+                                    <span class="badge badge-secondary">Regular User</span>
+                                    <small class="text-muted d-block">This user has standard privileges</small>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Configuration Status</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>MCP Configuration:</strong><br>
+                        {% if user.mcp_configurations %}
+                            <span class="badge badge-success">Configured</span>
+                            <small class="text-muted d-block">{{ user.mcp_configurations|length }} configuration(s)</small>
+                        {% else %}
+                            <span class="badge badge-warning">Not Configured</span>
+                            <small class="text-muted d-block">No MCP configurations found</small>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>AI Configuration:</strong><br>
+                        {% if user.ai_configurations %}
+                            <span class="badge badge-success">Configured</span>
+                            <small class="text-muted d-block">{{ user.ai_configurations|length }} configuration(s)</small>
+                        {% else %}
+                            <span class="badge badge-warning">Not Configured</span>
+                            <small class="text-muted d-block">No AI configurations found</small>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Validation Criteria:</strong><br>
+                        {% if user.validation_criteria %}
+                            <span class="badge badge-success">Configured</span>
+                            <small class="text-muted d-block">{{ user.validation_criteria|length }} criteria set(s)</small>
+                        {% else %}
+                            <span class="badge badge-warning">Not Configured</span>
+                            <small class="text-muted d-block">No validation criteria found</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-primary">
+                            <i class="fas fa-edit"></i> Edit User
+                        </a>
+                        
+                        {% if user.id != current_user.id %}
+                        <button type="button" class="btn btn-warning toggle-status-btn" 
+                                data-user-id="{{ user.id }}" data-current-status="{{ user.is_active }}">
+                            <i class="fas fa-{% if user.is_active %}pause{% else %}play{% endif %}"></i>
+                            {% if user.is_active %}Deactivate{% else %}Activate{% endif %} User
+                        </button>
+                        
+                        <button type="button" class="btn btn-danger delete-user-btn" 
+                                data-user-id="{{ user.id }}" data-username="{{ user.username }}">
+                            <i class="fas fa-trash"></i> Delete User
+                        </button>
+                        {% endif %}
+                        
+                        <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Users
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete user <strong id="delete-username"></strong>?</p>
+                <p class="text-danger">This action cannot be undone and will remove all user data.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="delete-user-form" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Delete User</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Delete user functionality
+    const deleteButton = document.querySelector('.delete-user-btn');
+    if (deleteButton) {
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteUserModal'));
+        const deleteForm = document.getElementById('delete-user-form');
+        const deleteUsername = document.getElementById('delete-username');
+
+        deleteButton.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const username = this.dataset.username;
+            
+            deleteUsername.textContent = username;
+            deleteForm.action = `/admin/users/${userId}/delete`;
+            deleteModal.show();
+        });
+    }
+
+    // Toggle user status functionality
+    const toggleButton = document.querySelector('.toggle-status-btn');
+    if (toggleButton) {
+        toggleButton.addEventListener('click', function() {
+            const userId = this.dataset.userId;
+            const currentStatus = this.dataset.currentStatus === 'True';
+            
+            fetch(`/admin/users/${userId}/toggle-status`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload the page to reflect changes
+                    location.reload();
+                } else {
+                    showAlert(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error updating user status', 'error');
+            });
+        });
+    }
+});
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : 'success'} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}
