@@ -3,6 +3,7 @@
 .kiro/
 *.md
 !README.md
+user_req.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
