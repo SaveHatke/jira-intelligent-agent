@@ -1,3 +1,8 @@
+#manual ignore
+.vscode/
+.kiro/
+MCP_CONFIGURATION_FINAL_UPDATE.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
