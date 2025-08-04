@@ -163,15 +163,19 @@
             </div>
             
             <div class="col-md-6 col-lg-4 mb-3">
-                <div class="card h-100 border-secondary">
-                    <div class="card-header bg-secondary text-white">
+                <div class="card h-100 border-success">
+                    <div class="card-header bg-success text-white">
                         <h6 class="card-title mb-0">
                             <i class="fas fa-cog me-2"></i>Configuration
                         </h6>
                     </div>
                     <div class="card-body">
                         <p class="card-text">Configure your MCP and AI service settings.</p>
-                        <a href="#" class="btn btn-outline-secondary btn-sm">Coming in Task 5</a>
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('config.index') }}" class="btn btn-outline-success btn-sm">Configuration Hub</a>
+                            <a href="{{ url_for('config.mcp_config') }}" class="btn btn-outline-success btn-sm">MCP Settings</a>
+                            <a href="{{ url_for('config.ai_config') }}" class="btn btn-outline-success btn-sm">AI Settings</a>
+                        </div>
                     </div>
                 </div>
             </div>

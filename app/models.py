@@ -161,9 +161,22 @@ class MCPConfiguration(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    server_url = db.Column(db.String(255), nullable=False)
-    personal_access_token = db.Column(db.Text, nullable=False)  # encrypted
+    
+    # Jira configuration
+    jira_url = db.Column(db.String(255))
+    jira_personal_token = db.Column(db.Text)  # encrypted
+    jira_ssl_verify = db.Column(db.Boolean, default=True)
+    
+    # Confluence configuration
+    confluence_url = db.Column(db.String(255))
+    confluence_personal_token = db.Column(db.Text)  # encrypted
+    confluence_ssl_verify = db.Column(db.Boolean, default=True)
+    
+    # Legacy fields for backward compatibility
+    server_url = db.Column(db.String(255))
+    personal_access_token = db.Column(db.Text)  # encrypted
     additional_params = db.Column(db.JSON)
+    
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     last_tested = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -187,7 +200,7 @@ class MCPConfiguration(db.Model):
         return key
     
     def set_personal_access_token(self, token: str) -> None:
-        """Encrypt and store personal access token."""
+        """Encrypt and store personal access token (legacy method)."""
         if not token:
             self.personal_access_token = ''
             return
@@ -197,13 +210,57 @@ class MCPConfiguration(db.Model):
         self.personal_access_token = encrypted_token.decode('utf-8')
     
     def get_personal_access_token(self) -> str:
-        """Decrypt and return personal access token."""
+        """Decrypt and return personal access token (legacy method)."""
         if not self.personal_access_token:
             return ''
         
         try:
             fernet = Fernet(self.encryption_key)
             decrypted_token = fernet.decrypt(self.personal_access_token.encode('utf-8'))
+            return decrypted_token.decode('utf-8')
+        except Exception:
+            return ''
+    
+    def set_jira_personal_token(self, token: str) -> None:
+        """Encrypt and store Jira personal access token."""
+        if not token:
+            self.jira_personal_token = ''
+            return
+        
+        fernet = Fernet(self.encryption_key)
+        encrypted_token = fernet.encrypt(token.encode('utf-8'))
+        self.jira_personal_token = encrypted_token.decode('utf-8')
+    
+    def get_jira_personal_token(self) -> str:
+        """Decrypt and return Jira personal access token."""
+        if not self.jira_personal_token:
+            return ''
+        
+        try:
+            fernet = Fernet(self.encryption_key)
+            decrypted_token = fernet.decrypt(self.jira_personal_token.encode('utf-8'))
+            return decrypted_token.decode('utf-8')
+        except Exception:
+            return ''
+    
+    def set_confluence_personal_token(self, token: str) -> None:
+        """Encrypt and store Confluence personal access token."""
+        if not token:
+            self.confluence_personal_token = ''
+            return
+        
+        fernet = Fernet(self.encryption_key)
+        encrypted_token = fernet.encrypt(token.encode('utf-8'))
+        self.confluence_personal_token = encrypted_token.decode('utf-8')
+    
+    def get_confluence_personal_token(self) -> str:
+        """Decrypt and return Confluence personal access token."""
+        if not self.confluence_personal_token:
+            return ''
+        
+        try:
+            fernet = Fernet(self.encryption_key)
+            decrypted_token = fernet.decrypt(self.confluence_personal_token.encode('utf-8'))
             return decrypted_token.decode('utf-8')
         except Exception:
             return ''
@@ -224,13 +281,32 @@ class MCPConfiguration(db.Model):
         """Validate MCP configuration and return list of errors."""
         errors = []
         
-        if not self.server_url or self.server_url.strip() == '':
-            errors.append("Server URL is required")
-        elif not self.server_url.startswith(('http://', 'https://')):
-            errors.append("Server URL must start with http:// or https://")
+        # Check if at least one service (Jira or Confluence) is configured
+        jira_configured = bool(self.jira_url and self.jira_personal_token)
+        confluence_configured = bool(self.confluence_url and self.confluence_personal_token)
+        legacy_configured = bool(self.server_url and self.personal_access_token)
         
-        if not self.personal_access_token or self.personal_access_token.strip() == '':
-            errors.append("Personal Access Token is required")
+        if not (jira_configured or confluence_configured or legacy_configured):
+            errors.append("At least one service (Jira or Confluence) must be configured")
+        
+        # Validate Jira configuration if provided
+        if self.jira_url:
+            if not self.jira_url.startswith(('http://', 'https://')):
+                errors.append("Jira URL must start with http:// or https://")
+            if not self.jira_personal_token:
+                errors.append("Jira Personal Access Token is required when Jira URL is provided")
+        
+        # Validate Confluence configuration if provided
+        if self.confluence_url:
+            if not self.confluence_url.startswith(('http://', 'https://')):
+                errors.append("Confluence URL must start with http:// or https://")
+            if not self.confluence_personal_token:
+                errors.append("Confluence Personal Access Token is required when Confluence URL is provided")
+        
+        # Legacy validation for backward compatibility
+        if self.server_url:
+            if not self.server_url.startswith(('http://', 'https://')):
+                errors.append("Server URL must start with http:// or https://")
         
         return errors
     
@@ -239,7 +315,11 @@ class MCPConfiguration(db.Model):
         data = {
             'id': self.id,
             'user_id': self.user_id,
-            'server_url': self.server_url,
+            'jira_url': self.jira_url,
+            'jira_ssl_verify': self.jira_ssl_verify,
+            'confluence_url': self.confluence_url,
+            'confluence_ssl_verify': self.confluence_ssl_verify,
+            'server_url': self.server_url,  # Legacy field
             'additional_params': self.additional_params or {},
             'is_active': self.is_active,
             'last_tested': self.last_tested.isoformat() if self.last_tested else None,
@@ -248,9 +328,13 @@ class MCPConfiguration(db.Model):
         }
         
         if include_token:
-            data['personal_access_token'] = self.get_personal_access_token()
+            data['jira_personal_token'] = self.get_jira_personal_token()
+            data['confluence_personal_token'] = self.get_confluence_personal_token()
+            data['personal_access_token'] = self.get_personal_access_token()  # Legacy
         else:
-            data['has_token'] = bool(self.personal_access_token)
+            data['has_jira_token'] = bool(self.jira_personal_token)
+            data['has_confluence_token'] = bool(self.confluence_personal_token)
+            data['has_token'] = bool(self.personal_access_token)  # Legacy
         
         return data
     

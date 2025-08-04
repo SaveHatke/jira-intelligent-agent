@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>Configuration Management</h1>
+            <p class="text-muted">Manage your MCP and AI service configurations</p>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- Configuration Status Cards -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-server me-2"></i>MCP Configuration
+                    </h5>
+                    {% if mcp_config and mcp_config.is_active %}
+                        <span class="badge bg-success">Active</span>
+                    {% else %}
+                        <span class="badge bg-warning">Inactive</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if mcp_config %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-2">
+                                    <i class="fas fa-bug me-1"></i>Jira
+                                </h6>
+                                <p class="small mb-1"><strong>URL:</strong> 
+                                    {% if mcp_config.jira_url %}
+                                        <span class="text-success">Configured</span>
+                                    {% else %}
+                                        <span class="text-muted">Not configured</span>
+                                    {% endif %}
+                                </p>
+                                <p class="small mb-2"><strong>Token:</strong> 
+                                    {% if mcp_config.get_jira_personal_token() %}
+                                        <span class="text-success">Configured</span>
+                                    {% else %}
+                                        <span class="text-muted">Not configured</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-info mb-2">
+                                    <i class="fas fa-file-alt me-1"></i>Confluence
+                                </h6>
+                                <p class="small mb-1"><strong>URL:</strong> 
+                                    {% if mcp_config.confluence_url %}
+                                        <span class="text-success">Configured</span>
+                                    {% else %}
+                                        <span class="text-muted">Not configured</span>
+                                    {% endif %}
+                                </p>
+                                <p class="small mb-2"><strong>Token:</strong> 
+                                    {% if mcp_config.get_confluence_personal_token() %}
+                                        <span class="text-success">Configured</span>
+                                    {% else %}
+                                        <span class="text-muted">Not configured</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        <p class="small"><strong>Last Tested:</strong> 
+                            {% if mcp_config.last_tested %}
+                                {{ mcp_config.last_tested.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% else %}
+                                <span class="text-muted">Never tested</span>
+                            {% endif %}
+                        </p>
+                    {% else %}
+                        <p class="text-muted">No MCP configuration found</p>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="{{ url_for('config.mcp_config') }}" class="btn btn-primary">
+                            <i class="fas fa-cog me-1"></i>Configure MCP
+                        </a>
+                        {% if mcp_config %}
+                            <button class="btn btn-outline-success ms-2" onclick="testMCPConnection('jira')"
+                                    {{ 'disabled' if not (mcp_config.jira_url and mcp_config.get_jira_personal_token()) }}>
+                                <i class="fas fa-plug me-1"></i>Test Jira
+                            </button>
+                            <button class="btn btn-outline-info ms-2" onclick="testMCPConnection('confluence')"
+                                    {{ 'disabled' if not (mcp_config.confluence_url and mcp_config.get_confluence_personal_token()) }}>
+                                <i class="fas fa-plug me-1"></i>Test Confluence
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>AI Configuration
+                    </h5>
+                    {% if ai_config and ai_config.is_validated %}
+                        <span class="badge bg-success">Validated</span>
+                    {% else %}
+                        <span class="badge bg-warning">Not Validated</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if ai_config %}
+                        <p><strong>Custom Headers:</strong> 
+                            {% if ai_config.get_custom_headers() %}
+                                <span class="text-success">{{ ai_config.get_custom_headers()|length }} configured</span>
+                            {% else %}
+                                <span class="text-muted">None configured</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Jira User ID:</strong> {{ ai_config.user_id_from_jira or 'Not configured' }}</p>
+                        <p><strong>Model Configs:</strong> 
+                            {% if ai_config.model_configs %}
+                                <span class="text-success">{{ ai_config.model_configs|length }} configured</span>
+                            {% else %}
+                                <span class="text-muted">Using defaults</span>
+                            {% endif %}
+                        </p>
+                    {% else %}
+                        <p class="text-muted">No AI configuration found</p>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="{{ url_for('config.ai_config') }}" class="btn btn-primary">
+                            <i class="fas fa-cog me-1"></i>Configure AI
+                        </a>
+                        {% if ai_config %}
+                            <button class="btn btn-outline-success ms-2" onclick="validateAIConfig()">
+                                <i class="fas fa-check me-1"></i>Validate
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tools me-2"></i>Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-outline-primary w-100" onclick="checkConfigStatus()">
+                                <i class="fas fa-heartbeat me-2"></i>Check Status
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <button class="btn btn-outline-secondary w-100" onclick="exportConfig()">
+                                <i class="fas fa-download me-2"></i>Export Config
+                            </button>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-success w-100">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Modal -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configuration Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="statusModalBody">
+                <!-- Status content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function testMCPConnection(serviceType) {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing...';
+    button.disabled = true;
+    
+    fetch(`{{ url_for('config.test_mcp_config') }}?service=${serviceType}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', `${serviceType.toUpperCase()} Connection Successful`, 
+                    `Connected as: ${data.user_info.display_name || data.user_info.user_name}`);
+            } else {
+                showAlert('danger', `${serviceType.toUpperCase()} Connection Failed`, data.message);
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Connection Test Failed', 'An error occurred while testing the connection.');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+}
+
+function validateAIConfig() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Validating...';
+    button.disabled = true;
+    
+    fetch('{{ url_for("config.validate_ai_config") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', 'AI Configuration Valid', data.message);
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', 'AI Configuration Invalid', data.message);
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Validation Failed', 'An error occurred while validating the configuration.');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+}
+
+function checkConfigStatus() {
+    fetch('{{ url_for("config.config_status") }}')
+        .then(response => response.json())
+        .then(data => {
+            let statusHtml = '<div class="row">';
+            
+            // MCP Status
+            statusHtml += '<div class="col-md-6"><h6>MCP Configuration</h6><ul class="list-unstyled">';
+            statusHtml += `<li><i class="fas fa-${data.mcp_configured ? 'check text-success' : 'times text-danger'}"></i> Configured</li>`;
+            statusHtml += `<li><i class="fas fa-${data.mcp_tested ? 'check text-success' : 'times text-danger'}"></i> Tested</li>`;
+            statusHtml += `<li><i class="fas fa-${data.mcp_active ? 'check text-success' : 'times text-danger'}"></i> Active</li>`;
+            statusHtml += '</ul></div>';
+            
+            // AI Status
+            statusHtml += '<div class="col-md-6"><h6>AI Configuration</h6><ul class="list-unstyled">';
+            statusHtml += `<li><i class="fas fa-${data.ai_configured ? 'check text-success' : 'times text-danger'}"></i> Configured</li>`;
+            statusHtml += `<li><i class="fas fa-${data.ai_validated ? 'check text-success' : 'times text-danger'}"></i> Validated</li>`;
+            statusHtml += '</ul></div>';
+            
+            statusHtml += '</div>';
+            
+            // Overall Status
+            statusHtml += `<div class="mt-3 p-3 rounded ${data.configuration_complete ? 'bg-success text-white' : 'bg-warning text-dark'}">`;
+            statusHtml += `<strong>Overall Status: ${data.configuration_complete ? 'Complete' : 'Incomplete'}</strong>`;
+            statusHtml += '</div>';
+            
+            document.getElementById('statusModalBody').innerHTML = statusHtml;
+            new bootstrap.Modal(document.getElementById('statusModal')).show();
+        })
+        .catch(error => {
+            showAlert('danger', 'Status Check Failed', 'An error occurred while checking configuration status.');
+        });
+}
+
+function exportConfig() {
+    fetch('{{ url_for("config.export_config") }}')
+        .then(response => response.json())
+        .then(data => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jia-config-${data.username}-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showAlert('success', 'Configuration Exported', 'Your configuration has been downloaded.');
+        })
+        .catch(error => {
+            showAlert('danger', 'Export Failed', 'An error occurred while exporting configuration.');
+        });
+}
+
+function showAlert(type, title, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            <strong>${title}:</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Insert at the top of the container
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

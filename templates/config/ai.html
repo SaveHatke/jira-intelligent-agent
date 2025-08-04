@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1>AI Configuration</h1>
+                    <p class="text-muted">Configure your AI service settings and model parameters</p>
+                </div>
+                <a href="{{ url_for('config.index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Config
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>AI Service Settings
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('config.save_ai_config') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        
+                        <!-- Custom Headers -->
+                        <div class="mb-4">
+                            <label for="custom_headers" class="form-label">
+                                <i class="fas fa-code me-1"></i>Custom Headers
+                            </label>
+                            <textarea class="form-control" 
+                                      id="custom_headers" 
+                                      name="custom_headers" 
+                                      rows="8"
+                                      placeholder='{"Authorization": "Bearer your-api-key", "Content-Type": "application/json"}'>{{ (config.get_custom_headers() if config else {}) | tojson(indent=2) }}</textarea>
+                            <div class="form-text">
+                                Custom HTTP headers for AI API requests in JSON format. Include your API key and any required headers.
+                                <a href="#" data-bs-toggle="modal" data-bs-target="#headersHelpModal">Need help with headers?</a>
+                            </div>
+                        </div>
+
+                        <!-- Jira User ID -->
+                        <div class="mb-4">
+                            <label for="user_id_from_jira" class="form-label">
+                                <i class="fas fa-user me-1"></i>Jira User ID
+                            </label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="user_id_from_jira" 
+                                   name="user_id_from_jira" 
+                                   value="{{ config.user_id_from_jira if config else '' }}"
+                                   placeholder="your-jira-username">
+                            <div class="form-text">
+                                Your Jira username or user ID for AI context. This helps the AI understand your role and permissions.
+                            </div>
+                        </div>
+
+                        <!-- Model Configurations -->
+                        <div class="mb-4">
+                            <label for="model_configs" class="form-label">
+                                <i class="fas fa-brain me-1"></i>Model Configurations
+                            </label>
+                            <textarea class="form-control" 
+                                      id="model_configs" 
+                                      name="model_configs" 
+                                      rows="10"
+                                      placeholder='{"model": "gpt-4", "temperature": 0.7}'>{{ (config.model_configs if config and config.model_configs else default_model_configs) | tojson(indent=2) }}</textarea>
+                            <div class="form-text">
+                                AI model parameters in JSON format. Adjust these settings to fine-tune AI behavior for your needs.
+                                <a href="#" data-bs-toggle="modal" data-bs-target="#modelHelpModal">Learn about model parameters</a>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-outline-secondary me-md-2" onclick="resetForm()">
+                                <i class="fas fa-undo me-1"></i>Reset
+                            </button>
+                            <button type="button" class="btn btn-outline-info me-md-2" onclick="loadDefaults()">
+                                <i class="fas fa-magic me-1"></i>Load Defaults
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-1"></i>Save Configuration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Validation Panel -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-check-circle me-2"></i>Configuration Validation
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if config %}
+                        <p class="text-muted small">Validate your AI configuration</p>
+                        <div class="d-grid">
+                            <button class="btn btn-outline-success" onclick="validateConfiguration()">
+                                <i class="fas fa-check me-1"></i>Validate Configuration
+                            </button>
+                        </div>
+                        {% if config.is_validated %}
+                            <div class="mt-3 p-2 bg-success bg-opacity-10 border border-success rounded">
+                                <small class="text-success">
+                                    <i class="fas fa-check-circle me-1"></i>Configuration is validated
+                                </small>
+                            </div>
+                        {% else %}
+                            <div class="mt-3 p-2 bg-warning bg-opacity-10 border border-warning rounded">
+                                <small class="text-warning">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Configuration not validated
+                                </small>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">Save configuration first to enable validation</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Configuration Status -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Configuration Status
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if config %}
+                        <ul class="list-unstyled mb-0">
+                            <li class="mb-2">
+                                <i class="fas fa-{{ 'check text-success' if config.get_custom_headers() else 'times text-warning' }} me-2"></i>
+                                Custom Headers
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-{{ 'check text-success' if config.user_id_from_jira else 'times text-warning' }} me-2"></i>
+                                Jira User ID
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-{{ 'check text-success' if config.model_configs else 'cog text-info' }} me-2"></i>
+                                Model Configurations
+                            </li>
+                            <li class="mb-2">
+                                <i class="fas fa-{{ 'check text-success' if config.is_validated else 'clock text-muted' }} me-2"></i>
+                                Validation Status
+                            </li>
+                        </ul>
+                    {% else %}
+                        <p class="text-muted">No configuration saved yet</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Tips -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-lightbulb me-2"></i>Quick Tips
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled small mb-0">
+                        <li class="mb-2">
+                            <i class="fas fa-arrow-right text-primary me-2"></i>
+                            Include your API key in custom headers for authentication
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-arrow-right text-primary me-2"></i>
+                            Lower temperature values make AI responses more focused
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-arrow-right text-primary me-2"></i>
+                            Higher max_tokens allow for longer AI responses
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-arrow-right text-primary me-2"></i>
+                            Always validate after making changes
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Headers Help Modal -->
+<div class="modal fade" id="headersHelpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Custom Headers Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Common Header Examples:</h6>
+                
+                <h6 class="mt-3">OpenAI API:</h6>
+                <pre class="bg-light p-3 rounded"><code>{
+  "Authorization": "Bearer sk-your-api-key-here",
+  "Content-Type": "application/json"
+}</code></pre>
+                
+                <h6 class="mt-3">Azure OpenAI:</h6>
+                <pre class="bg-light p-3 rounded"><code>{
+  "api-key": "your-azure-api-key",
+  "Content-Type": "application/json"
+}</code></pre>
+                
+                <h6 class="mt-3">Anthropic Claude:</h6>
+                <pre class="bg-light p-3 rounded"><code>{
+  "x-api-key": "your-anthropic-api-key",
+  "Content-Type": "application/json",
+  "anthropic-version": "2023-06-01"
+}</code></pre>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Security Note:</strong> Your API keys are stored securely and never logged or shared.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Model Help Modal -->
+<div class="modal fade" id="modelHelpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Model Configuration Parameters</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Common Parameters:</h6>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mt-3">model</h6>
+                        <p class="small">The AI model to use (e.g., "gpt-4", "gpt-3.5-turbo")</p>
+                        
+                        <h6 class="mt-3">temperature</h6>
+                        <p class="small">Controls randomness (0.0-2.0). Lower = more focused, Higher = more creative</p>
+                        
+                        <h6 class="mt-3">max_tokens</h6>
+                        <p class="small">Maximum response length (e.g., 2000)</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="mt-3">timeout</h6>
+                        <p class="small">Request timeout in seconds (e.g., 30)</p>
+                        
+                        <h6 class="mt-3">top_p</h6>
+                        <p class="small">Alternative to temperature (0.0-1.0)</p>
+                        
+                        <h6 class="mt-3">frequency_penalty</h6>
+                        <p class="small">Reduces repetition (-2.0 to 2.0)</p>
+                    </div>
+                </div>
+                
+                <h6 class="mt-4">Example Configuration:</h6>
+                <pre class="bg-light p-3 rounded"><code>{
+  "model": "gpt-4",
+  "temperature": 0.7,
+  "max_tokens": 2000,
+  "timeout": 30,
+  "top_p": 1.0,
+  "frequency_penalty": 0.0,
+  "presence_penalty": 0.0
+}</code></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function validateConfiguration() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Validating...';
+    button.disabled = true;
+    
+    fetch('{{ url_for("config.validate_ai_config") }}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', 'Configuration Valid', data.message);
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', 'Configuration Invalid', data.message);
+            }
+        })
+        .catch(error => {
+            showAlert('danger', 'Validation Failed', 'An error occurred while validating the configuration.');
+        })
+        .finally(() => {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+}
+
+function resetForm() {
+    if (confirm('Are you sure you want to reset the form? All unsaved changes will be lost.')) {
+        document.querySelector('form').reset();
+    }
+}
+
+function loadDefaults() {
+    if (confirm('Load default configurations? This will overwrite current values.')) {
+        document.getElementById('custom_headers').value = '{}';
+        document.getElementById('model_configs').value = {{ default_model_configs | tojson(indent=2) }};
+        document.getElementById('user_id_from_jira').value = '';
+    }
+}
+
+function showAlert(type, title, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            <strong>${title}:</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    setTimeout(() => {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+        }
+    }, 5000);
+}
+
+// Validate JSON in textarea fields
+function validateJSON(fieldId) {
+    const field = document.getElementById(fieldId);
+    try {
+        JSON.parse(field.value);
+        field.classList.remove('is-invalid');
+        field.classList.add('is-valid');
+    } catch (e) {
+        field.classList.remove('is-valid');
+        field.classList.add('is-invalid');
+    }
+}
+
+document.getElementById('custom_headers').addEventListener('blur', function() {
+    validateJSON('custom_headers');
+});
+
+document.getElementById('model_configs').addEventListener('blur', function() {
+    validateJSON('model_configs');
+});
+</script>
+{% endblock %}

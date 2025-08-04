@@ -68,6 +68,7 @@ def register_blueprints(app):
     from app.main import bp as main_bp
     from app.auth import bp as auth_bp
     from app.admin import bp as admin_bp
+    from app.config_mgmt import bp as config_bp
     
     # Import models to register user_loader
     from app import models
@@ -75,6 +76,7 @@ def register_blueprints(app):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(config_bp, url_prefix='/config')
 
 def register_error_handlers(app):
     """Register application error handlers."""
