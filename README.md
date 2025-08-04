@@ -1,109 +1,335 @@
 # JIA (Jira Intelligent Agent)
 
-JIA is a comprehensive web application built with Python Flask that integrates with Atlassian Jira and Confluence through the mcp-atlassian MCP server. The system provides AI-powered automation for Jira tasks, natural language query processing, and intelligent insights for agile teams.
+A comprehensive Flask web application that integrates with Atlassian Jira and Confluence through the mcp-atlassian MCP server, providing AI-powered automation for Jira tasks, natural language query processing, and intelligent insights for agile teams.
 
-## Features
+## 🚀 Quick Setup
 
-- **Multi-User Configuration Management**: Individual Jira/Confluence connections and AI settings
-- **Role-Based Access Control**: Support for scrum masters, product owners, business analysts, tech managers, and stakeholders
-- **AI-Powered Ticket Creation**: Create user stories, tasks, and bugs using natural language
-- **Ticket Validation**: Validate tickets against Definition of Ready, Definition of Done, and custom criteria
-- **Sprint Analytics**: Capacity recommendations, health dashboards, and spillover predictions
-- **Natural Language Queries**: Query Jira using plain English instead of JQL
-- **Intelligent Automation**: Story point estimation, test case generation, and release notes
+We provide automated setup scripts for easy installation on any system:
 
-## Quick Start
+### Option 1: Automated Setup (Recommended)
 
-### Prerequisites
-
-- Python 3.13+
-- Redis server
-- Access to Jira Data Center with Personal Access Tokens
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd jia
+**Windows:**
+```cmd
+python setup.py
+```
+or
+```cmd
+setup.bat
 ```
 
-2. Create and activate virtual environment:
+**Linux/macOS:**
 ```bash
+python3 setup.py
+```
+or
+```bash
+./setup.sh
+```
+
+### Option 2: Manual Setup
+
+See the [Manual Installation](#manual-installation) section below.
+
+## ✨ Features
+
+- **Multi-user Environment**: Role-based access control with individual configurations
+- **AI-Powered Ticket Creation**: Create Jira tickets from natural language input
+- **Smart Validation**: Validate tickets against DoR, DoD, and custom criteria
+- **Sprint Intelligence**: Capacity recommendations and spillover predictions
+- **Jira Time Machine**: Comprehensive ticket history analysis
+- **Natural Language Queries**: Query Jira using plain English
+- **Automated Insights**: Sprint health dashboards with AI commentary
+- **Story Point Estimation**: AI-powered estimation based on historical data
+- **Test Case Generation**: Automated test case creation from requirements
+- **Epic Breakdown**: Intelligent decomposition of large stories
+- **Bug Triage**: Automated duplicate detection and severity assessment
+- **Release Automation**: Automated release notes and sprint reviews
+- **Dependency Mapping**: Visual dependency tracking and management
+- **SLA Monitoring**: Automated escalation and breach prevention
+
+## 🛠 Technology Stack
+
+- **Backend**: Flask (Python 3.8+)
+- **Frontend**: HTML5, CSS3, JavaScript with Bootstrap 5
+- **Database**: SQLite (dev) / PostgreSQL (prod)
+- **Authentication**: Flask-Login with bcrypt
+- **MCP Integration**: mcp-atlassian server communication
+- **AI Integration**: Configurable AI API support
+
+## 📋 Prerequisites
+
+- Python 3.8 or higher
+- Git
+- Access to Jira Data Center instance
+- (Optional) Confluence Data Center instance
+- (Optional) AI API credentials
+
+## 🔧 Manual Installation
+
+If you prefer to set up manually or the automated scripts don't work for your system:
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/SaveHatke/jira-intelligent-agent.git
+cd jira-intelligent-agent
+```
+
+### 2. Create Virtual Environment
+```bash
+# Windows
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+venv\Scripts\activate
+
+# Linux/macOS
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-3. Install dependencies:
+### 3. Install Dependencies
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
+### 4. Environment Configuration
 ```bash
+# Copy environment template
 cp .env.example .env
-# Edit .env with your configuration
+
+# Edit .env with your settings
+# Required: SECRET_KEY, DATABASE_URL
+# Optional: MCP and AI configurations
 ```
 
-5. Initialize the database:
+### 5. Database Setup
 ```bash
-flask db init
-flask db migrate -m "Initial migration"
+# Create instance directory
+mkdir instance
+
+# Initialize database
+python manage_db.py
+
+# Run migrations (if available)
 flask db upgrade
 ```
 
-6. Run the application:
+### 6. Create Admin User
 ```bash
-flask run
+python create_admin.py
 ```
 
-## Configuration
+### 7. Start Application
+```bash
+python jia.py
+```
 
-Create a `.env` file in the root directory with the following variables:
+Visit `http://localhost:5000` to access the application.
 
-```env
-FLASK_APP=app
+## ⚙️ Configuration
+
+### Environment Variables (.env file)
+
+```bash
+# Flask Configuration
+FLASK_APP=jia.py
 FLASK_ENV=development
 SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///jia.db
-REDIS_URL=redis://localhost:6379/0
+DATABASE_URL=sqlite:///instance/jia-dev.db
+
+# MCP Server Configuration
+MCP_SERVER_URL=your-mcp-server-url
+DEFAULT_JIRA_URL=https://your-jira-instance.com
+DEFAULT_CONFLUENCE_URL=https://your-confluence-instance.com
+
+# AI Service Configuration
+AI_API_URL=your-ai-api-url
+AI_API_KEY=your-ai-api-key
+
+# Security
+ENCRYPTION_KEY=your-encryption-key-here
 ```
 
-## Architecture
+### User Roles
 
-JIA follows a modular Flask architecture with:
+The system supports these roles with specific permissions:
 
-- **Flask Application Factory**: Configurable app creation
-- **MCP Integration**: Communication with mcp-atlassian server
-- **AI Service Integration**: Natural language processing and automation
-- **Role-Based Security**: Multi-user support with permission management
-- **Responsive UI**: Bootstrap-based interface
+| Role | Permissions |
+|------|-------------|
+| **Scrum Master** | Sprint management, capacity planning, health dashboards |
+| **Product Owner** | Ticket creation, validation, epic breakdown |
+| **Business Analyst** | Requirements analysis, ticket validation, test case generation |
+| **Tech Manager** | Technical oversight, reporting, SLA monitoring |
+| **Stakeholder** | Read-only access to reports and dashboards |
 
-## Development
+### MCP Server Setup
+
+JIA requires the mcp-atlassian server for Jira/Confluence integration:
+
+1. Install and configure mcp-atlassian server
+2. Ensure it's accessible from your JIA instance
+3. Configure connection details in user settings
+
+## 🎯 Usage Guide
+
+### First Time Setup
+
+1. **Access Application**: Navigate to `http://localhost:5000`
+2. **Login**: Use admin credentials created during setup
+3. **User Management**: Create users and assign roles (Admin → User Management)
+4. **Individual Configuration**: Each user configures their MCP and AI settings
+5. **Test Connections**: Verify Jira/Confluence connectivity
+
+### Key Features
+
+#### Ticket Creation
+- Navigate to "Create Tickets" from dashboard
+- Select board and sprint/backlog
+- Enter requirements in natural language
+- AI generates structured tickets with acceptance criteria
+
+#### Ticket Validation
+- Go to "Validate Tickets" feature
+- Configure DoR/DoD criteria
+- Select tickets or sprints to validate
+- Review AI-generated validation reports
+
+#### Sprint Analytics
+- Access "Sprint Health" dashboard
+- View capacity recommendations
+- Monitor spillover predictions
+- Get AI-powered insights
+
+## 🧪 Development
 
 ### Running Tests
-
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=app tests/
+
+# Run specific test file
+pytest tests/test_models.py -v
 ```
 
-### Code Coverage
-
+### Database Operations
 ```bash
-pytest --cov=app
-```
+# Create migration
+flask db migrate -m "Description"
 
-### Database Migrations
-
-```bash
-flask db migrate -m "Description of changes"
+# Apply migrations
 flask db upgrade
+
+# Reset database (development only)
+python manage_db.py --reset
 ```
 
-## License
+### Code Quality
+```bash
+# Format code
+black app/ tests/
 
-[License information]
+# Lint code
+flake8 app/ tests/
 
-## Contributing
+# Type checking (if using mypy)
+mypy app/
+```
 
-[Contributing guidelines]
+## 📁 Project Structure
+
+```
+jira-intelligent-agent/
+├── app/                    # Main application package
+│   ├── admin/             # Admin interface
+│   ├── auth/              # Authentication
+│   ├── config_mgmt/       # Configuration management
+│   ├── main/              # Main routes
+│   └── models.py          # Database models
+├── migrations/            # Database migrations
+├── static/               # Static files (CSS, JS)
+├── templates/            # Jinja2 templates
+├── tests/                # Test suite
+├── instance/             # Instance-specific files
+├── .kiro/specs/          # Project specifications
+├── setup.py              # Cross-platform setup script
+├── setup.bat             # Windows setup script
+├── setup.sh              # Linux/macOS setup script
+├── jia.py                # Application entry point
+├── manage_db.py          # Database management
+├── create_admin.py       # Admin user creation
+└── requirements.txt      # Python dependencies
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and add tests
+4. Ensure tests pass: `pytest`
+5. Commit changes: `git commit -m 'Add amazing feature'`
+6. Push to branch: `git push origin feature/amazing-feature`
+7. Submit a Pull Request
+
+### Development Guidelines
+
+- Follow PEP 8 style guidelines
+- Add tests for new functionality
+- Update documentation for new features
+- Use meaningful commit messages
+- Keep PRs focused and atomic
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Setup Script Fails**
+- Ensure Python 3.8+ is installed and in PATH
+- Check internet connectivity for package downloads
+- Run with `--dev` flag for additional debugging
+
+**Database Errors**
+- Delete `instance/jia-dev.db` and run `python manage_db.py`
+- Check file permissions in instance directory
+- Verify DATABASE_URL in .env file
+
+**MCP Connection Issues**
+- Verify mcp-atlassian server is running
+- Check network connectivity to Jira/Confluence
+- Validate Personal Access Tokens
+- Review MCP server logs
+
+**Authentication Problems**
+- Clear browser cookies and cache
+- Check SECRET_KEY in .env file
+- Verify user exists in database
+- Reset password if needed
+
+### Getting Help
+
+- Check the [Issues](https://github.com/SaveHatke/jira-intelligent-agent/issues) page
+- Review the project specifications in `.kiro/specs/`
+- Enable debug mode: set `FLASK_ENV=development` in .env
+- Check application logs for detailed error messages
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Flask community for the excellent web framework
+- mcp-atlassian project for Jira/Confluence integration
+- Bootstrap team for the responsive UI framework
+- All contributors and users of this project
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/SaveHatke/jira-intelligent-agent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SaveHatke/jira-intelligent-agent/discussions)
+- **Documentation**: Check the `.kiro/specs/` directory for detailed specifications
+
+---
+
+**Made with ❤️ for agile teams everywhere**
