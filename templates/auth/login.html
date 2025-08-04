@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="card-title mb-0">
+                    <i class="fas fa-sign-in-alt me-2"></i>Sign In to JIA
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" novalidate>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username or Email</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="username" 
+                               name="username" 
+                               value="{{ request.form.get('username', '') }}"
+                               placeholder="Enter your username or email"
+                               required 
+                               autofocus>
+                        <div class="form-text">
+                            You can use either your username or email address to sign in.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" 
+                               class="form-control" 
+                               id="password" 
+                               name="password" 
+                               placeholder="Enter your password"
+                               required>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" 
+                               class="form-check-input" 
+                               id="remember_me" 
+                               name="remember_me"
+                               {% if request.form.get('remember_me') %}checked{% endif %}>
+                        <label class="form-check-label" for="remember_me">
+                            Remember me for 30 days
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                    </button>
+                </form>
+                
+                <div class="mt-4 text-center">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Contact your administrator if you need an account or have forgotten your password.
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Demo information for development -->
+        {% if config.DEBUG %}
+        <div class="card mt-3 border-info">
+            <div class="card-header bg-info text-white">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>Development Mode
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="card-text mb-2">
+                    <small>
+                        In development mode, you can create test users using the database management script.
+                        Run <code>python manage_db.py</code> to initialize the database with sample users.
+                    </small>
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

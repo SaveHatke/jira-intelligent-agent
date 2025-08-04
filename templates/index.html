@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="text-center">
+            <h1 class="display-4 mb-4">Welcome to JIA</h1>
+            <p class="lead mb-4">
+                Jira Intelligent Agent - Your AI-powered companion for Atlassian Jira and Confluence automation.
+            </p>
+            
+            <div class="row mt-5">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <i class="bi bi-robot fs-1 text-primary mb-3"></i>
+                            <h5 class="card-title">AI-Powered Automation</h5>
+                            <p class="card-text">Create tickets, validate requirements, and get intelligent insights using natural language.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <i class="bi bi-people fs-1 text-success mb-3"></i>
+                            <h5 class="card-title">Multi-User Support</h5>
+                            <p class="card-text">Role-based access control with individual configurations for teams and stakeholders.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <i class="bi bi-graph-up fs-1 text-info mb-3"></i>
+                            <h5 class="card-title">Sprint Analytics</h5>
+                            <p class="card-text">Get capacity recommendations, health dashboards, and spillover predictions.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg">Get Started</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

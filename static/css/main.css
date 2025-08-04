@@ -1,0 +1,80 @@
+/* JIA Custom Styles */
+
+:root {
+    --jia-primary: #0d6efd;
+    --jia-secondary: #6c757d;
+    --jia-success: #198754;
+    --jia-info: #0dcaf0;
+    --jia-warning: #ffc107;
+    --jia-danger: #dc3545;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand strong {
+    font-size: 1.5rem;
+}
+
+.navbar-brand small {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.alert {
+    border: none;
+    border-radius: 0.5rem;
+}
+
+footer {
+    margin-top: auto;
+}
+
+/* Dashboard specific styles */
+.dashboard-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-2px);
+}
+
+/* Form styles */
+.form-control:focus {
+    border-color: var(--jia-primary);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Loading spinner */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .navbar-brand small {
+        display: none;
+    }
+    
+    .container {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+}

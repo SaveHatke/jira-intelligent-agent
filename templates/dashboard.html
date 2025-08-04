@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>Dashboard</h1>
+                <p class="lead mb-0">Welcome back, {{ current_user.username }}!</p>
+            </div>
+            <div class="text-end">
+                <div class="badge bg-primary fs-6">
+                    {{ user_roles | join(', ') | title }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- User Role Information -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-info">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-user-tag me-2"></i>Your Access Level
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            You are logged in with the following role(s): 
+                            <strong>{{ user_roles | join(', ') | title }}</strong>
+                        </p>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                Your roles determine which features and actions are available to you in JIA.
+                            </small>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Available Features Grid -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="mb-3">Available Features</h3>
+            </div>
+            
+            <!-- Administrative Features -->
+            {% if accessible_features.user_management %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-danger">
+                    <div class="card-header bg-danger text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-users-cog me-2"></i>User Management
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Manage users, assign roles, and control access permissions.</p>
+                        <a href="#" class="btn btn-outline-danger btn-sm">Coming in Task 4</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Ticket Creation -->
+            {% if accessible_features.ticket_creation %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-success">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-plus-circle me-2"></i>Ticket Creation
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Create Jira tickets using natural language with AI assistance.</p>
+                        <a href="#" class="btn btn-outline-success btn-sm">Coming in Task 9</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Ticket Validation -->
+            {% if accessible_features.ticket_validation %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-check-circle me-2"></i>Ticket Validation
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Validate tickets against DoR, DoD, and custom criteria.</p>
+                        <a href="#" class="btn btn-outline-warning btn-sm">Coming in Task 10</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Sprint Capacity -->
+            {% if accessible_features.sprint_capacity %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>Sprint Capacity
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Get AI-driven sprint capacity recommendations.</p>
+                        <a href="#" class="btn btn-outline-primary btn-sm">Coming in Task 14</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Sprint Health Dashboard -->
+            {% if accessible_features.sprint_health %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-info">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-heartbeat me-2"></i>Sprint Health
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Monitor sprint health with AI-powered insights.</p>
+                        <a href="#" class="btn btn-outline-info btn-sm">Coming in Task 13</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Universal Features (Available to all users) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-secondary">
+                    <div class="card-header bg-secondary text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-history me-2"></i>Jira Time Machine
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">View comprehensive ticket history and evolution.</p>
+                        <a href="#" class="btn btn-outline-secondary btn-sm">Coming in Task 12</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-secondary">
+                    <div class="card-header bg-secondary text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-search me-2"></i>Natural Language Query
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Query Jira using plain English instead of JQL.</p>
+                        <a href="#" class="btn btn-outline-secondary btn-sm">Coming in Task 11</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100 border-secondary">
+                    <div class="card-header bg-secondary text-white">
+                        <h6 class="card-title mb-0">
+                            <i class="fas fa-cog me-2"></i>Configuration
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Configure your MCP and AI service settings.</p>
+                        <a href="#" class="btn btn-outline-secondary btn-sm">Coming in Task 5</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Authentication System Status -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-success" role="alert">
+                    <h4 class="alert-heading">
+                        <i class="fas fa-check-circle me-2"></i>Authentication System Active!
+                    </h4>
+                    <p>Task 3 has been completed successfully. The authentication system is now fully functional with:</p>
+                    <ul class="mb-0">
+                        <li><strong>Secure Login/Logout:</strong> bcrypt password hashing and session management</li>
+                        <li><strong>Role-Based Access Control:</strong> Feature access based on user roles</li>
+                        <li><strong>Access Control Decorators:</strong> Route protection with role validation</li>
+                        <li><strong>User-Friendly Interface:</strong> Responsive login forms and error handling</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
