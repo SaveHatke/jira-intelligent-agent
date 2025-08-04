@@ -2,15 +2,28 @@
 MCP Client Manager for JIA application.
 
 This module provides the MCPClientManager class for communicating with
-the mcp-atlassian server to interact with Jira and Confluence.
+the mcp-atlassian server to interact with Jira and Confluence using the
+pip-installed mcp-atlassian library.
 """
 
 import asyncio
 import json
 import logging
+import os
 from typing import Dict, List, Optional, Tuple, Any, Union
 from datetime import datetime
 from dataclasses import dataclass
+
+# Import mcp-atlassian library components
+try:
+    from mcp_atlassian.server import create_server
+    from mcp_atlassian.jira import JiraClient
+    from mcp_atlassian.confluence import ConfluenceClient
+    from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+    MCP_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"MCP Atlassian library not available: {e}")
+    MCP_AVAILABLE = False
 
 from app.models import MCPConfiguration
 from app.services.exceptions import MCPConnectionError, MCPValidationError, MCPTimeoutError
@@ -124,131 +137,422 @@ class MCPClientManager:
         if errors:
             raise MCPValidationError(f"Invalid MCP configuration: {', '.join(errors)}")
     
+    def _get_jira_client(self) -> 'JiraClient':
+        """
+        Get or create Jira client instance.
+        
+        Returns:
+            JiraClient instance configured with user credentials
+            
+        Raises:
+            MCPConnectionError: If client creation fails
+        """
+        if not MCP_AVAILABLE:
+            raise MCPConnectionError("MCP Atlassian library is not available. Please install mcp-atlassian.")
+        
+        if not self.config.jira_url or not self.config.get_jira_personal_token():
+            raise MCPConnectionError("Jira URL and Personal Access Token are required")
+        
+        try:
+            # For Server/Data Center deployments, use personal token
+            if self.config.get_jira_personal_token():
+                logger.info(f"🔧 Creating Jira client for Server/DC: {self.config.jira_url}")
+                print(f"🔧 Creating Jira client for Server/DC: {self.config.jira_url}")
+                
+                client = JiraClient(
+                    url=self.config.jira_url,
+                    personal_token=self.config.get_jira_personal_token(),
+                    ssl_verify=self.config.jira_ssl_verify
+                )
+            else:
+                raise MCPConnectionError("No valid authentication method found for Jira")
+            
+            return client
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create Jira client: {str(e)}")
+            print(f"❌ Failed to create Jira client: {str(e)}")
+            raise MCPConnectionError(f"Failed to create Jira client: {str(e)}")
+    
+    def _get_confluence_client(self) -> 'ConfluenceClient':
+        """
+        Get or create Confluence client instance.
+        
+        Returns:
+            ConfluenceClient instance configured with user credentials
+            
+        Raises:
+            MCPConnectionError: If client creation fails
+        """
+        if not MCP_AVAILABLE:
+            raise MCPConnectionError("MCP Atlassian library is not available. Please install mcp-atlassian.")
+        
+        if not self.config.confluence_url or not self.config.get_confluence_personal_token():
+            raise MCPConnectionError("Confluence URL and Personal Access Token are required")
+        
+        try:
+            # For Server/Data Center deployments, use personal token
+            if self.config.get_confluence_personal_token():
+                logger.info(f"🔧 Creating Confluence client for Server/DC: {self.config.confluence_url}")
+                print(f"🔧 Creating Confluence client for Server/DC: {self.config.confluence_url}")
+                
+                client = ConfluenceClient(
+                    url=self.config.confluence_url,
+                    personal_token=self.config.get_confluence_personal_token(),
+                    ssl_verify=self.config.confluence_ssl_verify
+                )
+            else:
+                raise MCPConnectionError("No valid authentication method found for Confluence")
+            
+            return client
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create Confluence client: {str(e)}")
+            print(f"❌ Failed to create Confluence client: {str(e)}")
+            raise MCPConnectionError(f"Failed to create Confluence client: {str(e)}")
+    
+    async def _call_jira_tool(self, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Call Jira tool using mcp-atlassian library.
+        
+        Args:
+            tool_name: Name of the Jira tool to call
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            Dict containing the response from Jira API
+            
+        Raises:
+            MCPConnectionError: If call fails
+            MCPTimeoutError: If request times out
+        """
+        if arguments is None:
+            arguments = {}
+            
+        try:
+            logger.info(f"🔧 Calling Jira tool: {tool_name} with args: {arguments}")
+            print(f"🔧 Calling Jira tool: {tool_name} with args: {arguments}")
+            
+            client = self._get_jira_client()
+            
+            # Map tool names to client methods
+            if tool_name == 'get_current_user' or tool_name == 'jira_get_user_profile':
+                response = await asyncio.wait_for(
+                    client.get_current_user(),
+                    timeout=self.timeout
+                )
+            elif tool_name == 'jira_get_agile_boards':
+                response = await asyncio.wait_for(
+                    client.get_boards(),
+                    timeout=self.timeout
+                )
+            elif tool_name == 'jira_get_sprints_from_board':
+                board_id = arguments.get('board_id')
+                if not board_id:
+                    raise MCPConnectionError("board_id is required for jira_get_sprints_from_board")
+                response = await asyncio.wait_for(
+                    client.get_sprints(board_id),
+                    timeout=self.timeout
+                )
+            else:
+                # For other tools, try to call them dynamically
+                method_name = tool_name.replace('jira_', '').replace('_', '')
+                if hasattr(client, method_name):
+                    method = getattr(client, method_name)
+                    response = await asyncio.wait_for(
+                        method(**arguments),
+                        timeout=self.timeout
+                    )
+                else:
+                    raise MCPConnectionError(f"Unknown Jira tool: {tool_name}")
+            
+            logger.info(f"✅ Jira tool response: {json.dumps(response, indent=2, default=str)}")
+            print(f"✅ Jira tool response: {json.dumps(response, indent=2, default=str)}")
+            
+            return response
+            
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ Jira tool call timed out after {self.timeout} seconds")
+            print(f"⏰ Jira tool call timed out after {self.timeout} seconds")
+            raise MCPTimeoutError(f"Jira tool call timed out after {self.timeout} seconds")
+        except Exception as e:
+            if isinstance(e, (MCPConnectionError, MCPTimeoutError)):
+                raise
+            logger.error(f"❌ Jira tool call failed: {str(e)}")
+            print(f"❌ Jira tool call failed: {str(e)}")
+            raise MCPConnectionError(f"Jira tool call failed: {str(e)}")
+    
+    async def _call_confluence_tool(self, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Call Confluence tool using mcp-atlassian library.
+        
+        Args:
+            tool_name: Name of the Confluence tool to call
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            Dict containing the response from Confluence API
+            
+        Raises:
+            MCPConnectionError: If call fails
+            MCPTimeoutError: If request times out
+        """
+        if arguments is None:
+            arguments = {}
+            
+        try:
+            logger.info(f"🔧 Calling Confluence tool: {tool_name} with args: {arguments}")
+            print(f"🔧 Calling Confluence tool: {tool_name} with args: {arguments}")
+            
+            client = self._get_confluence_client()
+            
+            # Map tool names to client methods
+            if tool_name == 'get_current_user':
+                response = await asyncio.wait_for(
+                    client.get_current_user(),
+                    timeout=self.timeout
+                )
+            else:
+                # For other tools, try to call them dynamically
+                method_name = tool_name.replace('confluence_', '').replace('_', '')
+                if hasattr(client, method_name):
+                    method = getattr(client, method_name)
+                    response = await asyncio.wait_for(
+                        method(**arguments),
+                        timeout=self.timeout
+                    )
+                else:
+                    raise MCPConnectionError(f"Unknown Confluence tool: {tool_name}")
+            
+            logger.info(f"✅ Confluence tool response: {json.dumps(response, indent=2, default=str)}")
+            print(f"✅ Confluence tool response: {json.dumps(response, indent=2, default=str)}")
+            
+            return response
+            
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ Confluence tool call timed out after {self.timeout} seconds")
+            print(f"⏰ Confluence tool call timed out after {self.timeout} seconds")
+            raise MCPTimeoutError(f"Confluence tool call timed out after {self.timeout} seconds")
+        except Exception as e:
+            if isinstance(e, (MCPConnectionError, MCPTimeoutError)):
+                raise
+            logger.error(f"❌ Confluence tool call failed: {str(e)}")
+            print(f"❌ Confluence tool call failed: {str(e)}")
+            raise MCPConnectionError(f"Confluence tool call failed: {str(e)}")
+    
     async def test_jira_connection(self) -> ConnectionResult:
         """
-        Test Jira connection and retrieve user information.
+        Test Jira connection and retrieve user information using real MCP server.
         
         Returns:
             ConnectionResult with success status and user info
         """
         try:
             if not self.config.jira_url or not self.config.get_jira_personal_token():
+                logger.warning("❌ Missing Jira credentials")
                 return ConnectionResult(
                     success=False,
                     error_message="Jira URL and Personal Access Token are required"
                 )
             
-            # For now, we'll simulate the connection test
-            # In a real implementation, this would use the actual mcp-atlassian client
-            logger.info(f"Testing Jira connection to {self.config.jira_url}")
-            
-            # Simulate network delay
-            await asyncio.sleep(0.1)
-            
             # Basic URL validation
             if not self.config.jira_url.startswith(('http://', 'https://')):
+                logger.warning(f"❌ Invalid Jira URL format: {self.config.jira_url}")
                 return ConnectionResult(
                     success=False,
-                    error_message="Invalid Jira URL format"
+                    error_message="Invalid Jira URL format - must start with http:// or https://"
                 )
             
-            # Simulate successful connection
-            user_info = {
-                'accountId': 'test_jira_user_id',
-                'displayName': 'Test Jira User',
-                'emailAddress': 'test@jira.example.com',
-                'active': True
-            }
+            logger.info(f"🔍 Testing real Jira connection to {self.config.jira_url}")
+            print(f"🔍 Testing real Jira connection to {self.config.jira_url}")
             
-            return ConnectionResult(
-                success=True,
-                user_name=user_info.get('displayName', 'Unknown'),
-                user_id=user_info.get('accountId', ''),
-                display_name=user_info.get('displayName', ''),
-                email=user_info.get('emailAddress', ''),
-                server_info={
-                    'server_url': self.config.jira_url,
-                    'ssl_verify': self.config.jira_ssl_verify,
-                    'connection_time': datetime.utcnow().isoformat()
-                }
-            )
-            
-        except asyncio.TimeoutError:
-            logger.error("Jira connection test timed out")
-            return ConnectionResult(
-                success=False,
-                error_message="Connection timeout - please check your Jira URL and network connectivity"
-            )
+            # Call Jira tool to get current user information
+            try:
+                response = await self._call_jira_tool('get_current_user')
+                logger.info(f"✅ Jira Response received: {json.dumps(response, indent=2, default=str)}")
+                print(f"✅ Jira Response received: {json.dumps(response, indent=2, default=str)}")
+                
+                # Extract user information from response
+                if isinstance(response, dict):
+                    # Handle different possible response structures
+                    user_data = response
+                    
+                    # Extract user fields
+                    user_name = (
+                        user_data.get('displayName') or 
+                        user_data.get('name') or 
+                        user_data.get('username') or 
+                        'Unknown User'
+                    )
+                    
+                    user_id = (
+                        user_data.get('accountId') or 
+                        user_data.get('key') or 
+                        user_data.get('id') or 
+                        ''
+                    )
+                    
+                    email = (
+                        user_data.get('emailAddress') or 
+                        user_data.get('email') or 
+                        ''
+                    )
+                    
+                    logger.info(f"✅ Jira connection successful - User: {user_name} ({email})")
+                    print(f"✅ Jira connection successful - User: {user_name} ({email})")
+                    
+                    return ConnectionResult(
+                        success=True,
+                        user_name=user_name,
+                        user_id=user_id,
+                        display_name=user_name,
+                        email=email,
+                        server_info={
+                            'server_url': self.config.jira_url,
+                            'ssl_verify': self.config.jira_ssl_verify,
+                            'connection_time': datetime.utcnow().isoformat(),
+                            'raw_response': response
+                        }
+                    )
+                else:
+                    logger.error(f"❌ Unexpected response format: {type(response)}")
+                    print(f"❌ Unexpected response format: {type(response)}")
+                    return ConnectionResult(
+                        success=False,
+                        error_message=f"Unexpected response format from MCP server: {type(response)}"
+                    )
+                    
+            except MCPConnectionError as e:
+                logger.error(f"❌ MCP Connection Error: {str(e)}")
+                print(f"❌ MCP Connection Error: {str(e)}")
+                return ConnectionResult(
+                    success=False,
+                    error_message=f"MCP Connection Error: {str(e)}"
+                )
+            except MCPTimeoutError as e:
+                logger.error(f"⏰ MCP Timeout Error: {str(e)}")
+                print(f"⏰ MCP Timeout Error: {str(e)}")
+                return ConnectionResult(
+                    success=False,
+                    error_message=f"Connection timeout: {str(e)}"
+                )
+                
         except Exception as e:
-            logger.error(f"Jira connection test failed: {str(e)}")
+            logger.error(f"❌ Unexpected error in Jira connection test: {str(e)}")
+            print(f"❌ Unexpected error in Jira connection test: {str(e)}")
             return ConnectionResult(
                 success=False,
-                error_message=f"Connection failed: {str(e)}"
+                error_message=f"Unexpected error: {str(e)}"
             )
     
     async def test_confluence_connection(self) -> ConnectionResult:
         """
-        Test Confluence connection and retrieve user information.
+        Test Confluence connection and retrieve user information using real MCP server.
         
         Returns:
             ConnectionResult with success status and user info
         """
         try:
             if not self.config.confluence_url or not self.config.get_confluence_personal_token():
+                logger.warning("❌ Missing Confluence credentials")
                 return ConnectionResult(
                     success=False,
                     error_message="Confluence URL and Personal Access Token are required"
                 )
             
-            logger.info(f"Testing Confluence connection to {self.config.confluence_url}")
-            
-            # Simulate network delay
-            await asyncio.sleep(0.1)
-            
             # Basic URL validation
             if not self.config.confluence_url.startswith(('http://', 'https://')):
+                logger.warning(f"❌ Invalid Confluence URL format: {self.config.confluence_url}")
                 return ConnectionResult(
                     success=False,
-                    error_message="Invalid Confluence URL format"
+                    error_message="Invalid Confluence URL format - must start with http:// or https://"
                 )
             
-            # Simulate successful connection
-            user_info = {
-                'accountId': 'test_confluence_user_id',
-                'displayName': 'Test Confluence User',
-                'email': 'test@confluence.example.com',
-                'type': 'known'
-            }
+            logger.info(f"🔍 Testing real Confluence connection to {self.config.confluence_url}")
+            print(f"🔍 Testing real Confluence connection to {self.config.confluence_url}")
             
-            return ConnectionResult(
-                success=True,
-                user_name=user_info.get('displayName', 'Unknown'),
-                user_id=user_info.get('accountId', ''),
-                display_name=user_info.get('displayName', ''),
-                email=user_info.get('email', ''),
-                server_info={
-                    'server_url': self.config.confluence_url,
-                    'ssl_verify': self.config.confluence_ssl_verify,
-                    'connection_time': datetime.utcnow().isoformat()
-                }
-            )
-            
-        except asyncio.TimeoutError:
-            logger.error("Confluence connection test timed out")
-            return ConnectionResult(
-                success=False,
-                error_message="Connection timeout - please check your Confluence URL and network connectivity"
-            )
+            # Call Confluence tool to get current user information
+            try:
+                response = await self._call_confluence_tool('get_current_user')
+                logger.info(f"✅ Confluence Response received: {json.dumps(response, indent=2, default=str)}")
+                print(f"✅ Confluence Response received: {json.dumps(response, indent=2, default=str)}")
+                
+                # Extract user information from response
+                if isinstance(response, dict):
+                    # Handle different possible response structures
+                    user_data = response
+                    
+                    # Extract user fields
+                    user_name = (
+                        user_data.get('displayName') or 
+                        user_data.get('name') or 
+                        user_data.get('username') or 
+                        'Unknown User'
+                    )
+                    
+                    user_id = (
+                        user_data.get('accountId') or 
+                        user_data.get('key') or 
+                        user_data.get('id') or 
+                        ''
+                    )
+                    
+                    email = (
+                        user_data.get('email') or 
+                        user_data.get('emailAddress') or 
+                        ''
+                    )
+                    
+                    logger.info(f"✅ Confluence connection successful - User: {user_name} ({email})")
+                    print(f"✅ Confluence connection successful - User: {user_name} ({email})")
+                    
+                    return ConnectionResult(
+                        success=True,
+                        user_name=user_name,
+                        user_id=user_id,
+                        display_name=user_name,
+                        email=email,
+                        server_info={
+                            'server_url': self.config.confluence_url,
+                            'ssl_verify': self.config.confluence_ssl_verify,
+                            'connection_time': datetime.utcnow().isoformat(),
+                            'raw_response': response
+                        }
+                    )
+                else:
+                    logger.error(f"❌ Unexpected response format: {type(response)}")
+                    print(f"❌ Unexpected response format: {type(response)}")
+                    return ConnectionResult(
+                        success=False,
+                        error_message=f"Unexpected response format from MCP server: {type(response)}"
+                    )
+                    
+            except MCPConnectionError as e:
+                logger.error(f"❌ MCP Connection Error: {str(e)}")
+                print(f"❌ MCP Connection Error: {str(e)}")
+                return ConnectionResult(
+                    success=False,
+                    error_message=f"MCP Connection Error: {str(e)}"
+                )
+            except MCPTimeoutError as e:
+                logger.error(f"⏰ MCP Timeout Error: {str(e)}")
+                print(f"⏰ MCP Timeout Error: {str(e)}")
+                return ConnectionResult(
+                    success=False,
+                    error_message=f"Connection timeout: {str(e)}"
+                )
+                
         except Exception as e:
-            logger.error(f"Confluence connection test failed: {str(e)}")
+            logger.error(f"❌ Unexpected error in Confluence connection test: {str(e)}")
+            print(f"❌ Unexpected error in Confluence connection test: {str(e)}")
             return ConnectionResult(
                 success=False,
-                error_message=f"Connection failed: {str(e)}"
+                error_message=f"Unexpected error: {str(e)}"
             )
     
     async def get_boards(self) -> List[Board]:
         """
-        Fetch all accessible Jira boards.
+        Fetch all accessible Jira boards using real MCP server.
         
         Returns:
             List of Board objects
@@ -257,57 +561,73 @@ class MCPClientManager:
             if not self.config.jira_url or not self.config.get_jira_personal_token():
                 raise MCPConnectionError("Jira configuration is required for board operations")
             
-            logger.info("Fetching Jira boards")
+            logger.info("🔍 Fetching real Jira boards")
+            print("🔍 Fetching real Jira boards")
             
-            # Simulate network delay
-            await asyncio.sleep(0.2)
-            
-            # Simulate board data
-            boards_data = [
-                {
-                    'id': '1',
-                    'name': 'Development Board',
-                    'type': 'scrum',
-                    'location': {
-                        'projectKey': 'DEV',
-                        'projectName': 'Development Project'
-                    },
-                    'self': f"{self.config.jira_url}/rest/agile/1.0/board/1"
-                },
-                {
-                    'id': '2',
-                    'name': 'Support Board',
-                    'type': 'kanban',
-                    'location': {
-                        'projectKey': 'SUP',
-                        'projectName': 'Support Project'
-                    },
-                    'self': f"{self.config.jira_url}/rest/agile/1.0/board/2"
-                }
-            ]
+            # Call real MCP server to get boards
+            response = await self._call_jira_tool('jira_get_agile_boards')
             
             boards = []
-            for board_data in boards_data:
-                board = Board(
-                    id=board_data['id'],
-                    name=board_data['name'],
-                    type=board_data['type'],
-                    project_key=board_data['location']['projectKey'],
-                    project_name=board_data['location']['projectName'],
-                    self_url=board_data['self']
-                )
-                boards.append(board)
             
-            logger.info(f"Retrieved {len(boards)} boards")
-            return boards
+            # Handle different response formats
+            boards_data = response
+            if isinstance(response, dict):
+                if 'values' in response:
+                    boards_data = response['values']
+                elif 'boards' in response:
+                    boards_data = response['boards']
+                elif 'content' in response:
+                    boards_data = response['content']
+            
+            if isinstance(boards_data, list):
+                for board_data in boards_data:
+                    # Extract board information
+                    board_id = str(board_data.get('id', ''))
+                    board_name = board_data.get('name', 'Unknown Board')
+                    board_type = board_data.get('type', 'unknown')
+                    
+                    # Extract project information
+                    location = board_data.get('location', {})
+                    project_key = location.get('projectKey', '')
+                    project_name = location.get('projectName', '')
+                    
+                    # Handle different location formats
+                    if not project_key and 'project' in board_data:
+                        project_info = board_data['project']
+                        project_key = project_info.get('key', '')
+                        project_name = project_info.get('name', '')
+                    
+                    board = Board(
+                        id=board_id,
+                        name=board_name,
+                        type=board_type,
+                        project_key=project_key,
+                        project_name=project_name,
+                        self_url=board_data.get('self', f"{self.config.jira_url}/rest/agile/1.0/board/{board_id}")
+                    )
+                    boards.append(board)
+                    
+                logger.info(f"✅ Retrieved {len(boards)} boards from Jira")
+                print(f"✅ Retrieved {len(boards)} boards from Jira")
+                
+                for board in boards:
+                    logger.info(f"  - Board: {board.name} (ID: {board.id}, Type: {board.type}, Project: {board.project_key})")
+                    print(f"  - Board: {board.name} (ID: {board.id}, Type: {board.type}, Project: {board.project_key})")
+                
+                return boards
+            else:
+                logger.warning(f"⚠️ Unexpected boards data format: {type(boards_data)}")
+                print(f"⚠️ Unexpected boards data format: {type(boards_data)}")
+                return []
             
         except Exception as e:
-            logger.error(f"Failed to fetch boards: {str(e)}")
+            logger.error(f"❌ Failed to fetch boards: {str(e)}")
+            print(f"❌ Failed to fetch boards: {str(e)}")
             raise MCPConnectionError(f"Failed to fetch boards: {str(e)}")
     
     async def get_sprints(self, board_id: str) -> List[Sprint]:
         """
-        Fetch sprints for a specific board.
+        Fetch sprints for a specific board using real MCP server.
         
         Args:
             board_id: Board ID to fetch sprints for
@@ -319,56 +639,58 @@ class MCPClientManager:
             if not self.config.jira_url or not self.config.get_jira_personal_token():
                 raise MCPConnectionError("Jira configuration is required for sprint operations")
             
-            logger.info(f"Fetching sprints for board {board_id}")
+            logger.info(f"🔍 Fetching real sprints for board {board_id}")
+            print(f"🔍 Fetching real sprints for board {board_id}")
             
-            # Simulate network delay
-            await asyncio.sleep(0.2)
-            
-            # Simulate sprint data
-            sprints_data = [
-                {
-                    'id': '10',
-                    'name': 'Sprint 1',
-                    'state': 'active',
-                    'startDate': '2025-01-01T09:00:00.000Z',
-                    'endDate': '2025-01-14T17:00:00.000Z',
-                    'originBoardId': board_id
-                },
-                {
-                    'id': '11',
-                    'name': 'Sprint 2',
-                    'state': 'future',
-                    'originBoardId': board_id
-                },
-                {
-                    'id': '9',
-                    'name': 'Sprint 0',
-                    'state': 'closed',
-                    'startDate': '2024-12-15T09:00:00.000Z',
-                    'endDate': '2024-12-28T17:00:00.000Z',
-                    'completeDate': '2024-12-28T17:00:00.000Z',
-                    'originBoardId': board_id
-                }
-            ]
+            # Call real MCP server to get sprints
+            response = await self._call_jira_tool('jira_get_sprints_from_board', {'board_id': board_id})
             
             sprints = []
-            for sprint_data in sprints_data:
-                sprint = Sprint(
-                    id=sprint_data['id'],
-                    name=sprint_data['name'],
-                    state=sprint_data['state'],
-                    start_date=sprint_data.get('startDate'),
-                    end_date=sprint_data.get('endDate'),
-                    complete_date=sprint_data.get('completeDate'),
-                    board_id=board_id
-                )
-                sprints.append(sprint)
             
-            logger.info(f"Retrieved {len(sprints)} sprints for board {board_id}")
-            return sprints
+            # Handle different response formats
+            sprints_data = response
+            if isinstance(response, dict):
+                if 'values' in response:
+                    sprints_data = response['values']
+                elif 'sprints' in response:
+                    sprints_data = response['sprints']
+                elif 'content' in response:
+                    sprints_data = response['content']
+            
+            if isinstance(sprints_data, list):
+                for sprint_data in sprints_data:
+                    # Extract sprint information
+                    sprint_id = str(sprint_data.get('id', ''))
+                    sprint_name = sprint_data.get('name', 'Unknown Sprint')
+                    sprint_state = sprint_data.get('state', 'unknown')
+                    
+                    sprint = Sprint(
+                        id=sprint_id,
+                        name=sprint_name,
+                        state=sprint_state,
+                        start_date=sprint_data.get('startDate'),
+                        end_date=sprint_data.get('endDate'),
+                        complete_date=sprint_data.get('completeDate'),
+                        board_id=board_id
+                    )
+                    sprints.append(sprint)
+                    
+                logger.info(f"✅ Retrieved {len(sprints)} sprints for board {board_id}")
+                print(f"✅ Retrieved {len(sprints)} sprints for board {board_id}")
+                
+                for sprint in sprints:
+                    logger.info(f"  - Sprint: {sprint.name} (ID: {sprint.id}, State: {sprint.state})")
+                    print(f"  - Sprint: {sprint.name} (ID: {sprint.id}, State: {sprint.state})")
+                
+                return sprints
+            else:
+                logger.warning(f"⚠️ Unexpected sprints data format: {type(sprints_data)}")
+                print(f"⚠️ Unexpected sprints data format: {type(sprints_data)}")
+                return []
             
         except Exception as e:
-            logger.error(f"Failed to fetch sprints for board {board_id}: {str(e)}")
+            logger.error(f"❌ Failed to fetch sprints for board {board_id}: {str(e)}")
+            print(f"❌ Failed to fetch sprints for board {board_id}: {str(e)}")
             raise MCPConnectionError(f"Failed to fetch sprints: {str(e)}")
     
     async def create_ticket(self, ticket_data: Dict[str, Any]) -> TicketResult:

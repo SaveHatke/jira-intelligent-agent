@@ -48,8 +48,13 @@ def run_command(command, shell=True, check=True):
     """Run command and handle errors"""
     try:
         print_colored(f"Running: {command}", Colors.OKBLUE)
-        result = subprocess.run(command, shell=shell, check=check, 
-                              capture_output=True, text=True)
+        # Handle command as list for better path handling with spaces
+        if isinstance(command, str) and shell:
+            result = subprocess.run(command, shell=shell, check=check, 
+                                  capture_output=True, text=True)
+        else:
+            result = subprocess.run(command, shell=shell, check=check, 
+                                  capture_output=True, text=True)
         if result.stdout:
             print(result.stdout)
         return result
@@ -84,7 +89,7 @@ def create_virtual_environment(skip_venv=False):
         return
     
     # Create virtual environment
-    result = run_command(f"{sys.executable} -m venv venv")
+    result = run_command(f'"{sys.executable}" -m venv venv')
     if not result:
         print_colored("Failed to create virtual environment", Colors.FAIL)
         sys.exit(1)
@@ -108,9 +113,9 @@ def install_dependencies(dev=False):
     # Determine pip command
     system = platform.system().lower()
     if system == "windows" and Path("venv/Scripts/pip.exe").exists():
-        pip_cmd = "venv\\Scripts\\pip"
+        pip_cmd = '"venv\\Scripts\\pip"'
     elif Path("venv/bin/pip").exists():
-        pip_cmd = "venv/bin/pip"
+        pip_cmd = '"venv/bin/pip"'
     else:
         pip_cmd = "pip"
     
@@ -196,9 +201,9 @@ def setup_database():
     # Determine python command
     system = platform.system().lower()
     if system == "windows" and Path("venv/Scripts/python.exe").exists():
-        python_cmd = "venv\\Scripts\\python"
+        python_cmd = '"venv\\Scripts\\python"'
     elif Path("venv/bin/python").exists():
-        python_cmd = "venv/bin/python"
+        python_cmd = '"venv/bin/python"'
     else:
         python_cmd = "python"
     
@@ -209,11 +214,21 @@ def setup_database():
     # Initialize database
     if Path("manage_db.py").exists():
         print_colored("Running database initialization...", Colors.OKBLUE)
-        result = run_command(f"{python_cmd} manage_db.py")
+        result = run_command(f"{python_cmd} manage_db.py init-db")
+        if not result:
+            print_colored("Database initialization failed, trying alternative method...", Colors.WARNING)
+            # Try to create tables directly
+            result = run_command(f"{python_cmd} -c \"from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all(); print('Tables created successfully')\"")
+        
         if result:
             print_colored("✓ Database initialized successfully", Colors.OKGREEN)
+        else:
+            print_colored("⚠️ Database initialization had issues, but continuing...", Colors.WARNING)
     else:
-        print_colored("manage_db.py not found, skipping database initialization", Colors.WARNING)
+        print_colored("manage_db.py not found, creating tables directly...", Colors.WARNING)
+        result = run_command(f"{python_cmd} -c \"from app import create_app, db; app = create_app(); app.app_context().push(); db.create_all(); print('Tables created successfully')\"")
+        if result:
+            print_colored("✓ Database tables created successfully", Colors.OKGREEN)
     
     # Run migrations if available
     if Path("migrations").exists():
@@ -228,17 +243,20 @@ def create_admin_user():
     # Determine python command
     system = platform.system().lower()
     if system == "windows" and Path("venv/Scripts/python.exe").exists():
-        python_cmd = "venv\\Scripts\\python"
+        python_cmd = '"venv\\Scripts\\python"'
     elif Path("venv/bin/python").exists():
-        python_cmd = "venv/bin/python"
+        python_cmd = '"venv/bin/python"'
     else:
         python_cmd = "python"
     
     if Path("create_admin.py").exists():
         print_colored("Creating admin user...", Colors.OKBLUE)
-        result = run_command(f"{python_cmd} create_admin.py")
-        if result:
+        result = run_command(f"{python_cmd} create_admin.py", check=False)
+        if result and result.returncode == 0:
             print_colored("✓ Admin user created successfully", Colors.OKGREEN)
+        else:
+            print_colored("⚠️ Admin user creation failed, you can create it manually later", Colors.WARNING)
+            print_colored("Run: python create_admin.py", Colors.OKCYAN)
     else:
         print_colored("create_admin.py not found, skipping admin user creation", Colors.WARNING)
         print_colored("You can create an admin user later by running the create_admin.py script", Colors.OKCYAN)
@@ -250,9 +268,9 @@ def run_tests():
     # Determine python command
     system = platform.system().lower()
     if system == "windows" and Path("venv/Scripts/python.exe").exists():
-        python_cmd = "venv\\Scripts\\python"
+        python_cmd = '"venv\\Scripts\\python"'
     elif Path("venv/bin/python").exists():
-        python_cmd = "venv/bin/python"
+        python_cmd = '"venv/bin/python"'
     else:
         python_cmd = "python"
     
@@ -275,10 +293,10 @@ def print_completion_message():
     system = platform.system().lower()
     if system == "windows":
         activate_cmd = "venv\\Scripts\\activate"
-        python_cmd = "venv\\Scripts\\python"
+        python_cmd = '"venv\\Scripts\\python"'
     else:
         activate_cmd = "source venv/bin/activate"
-        python_cmd = "venv/bin/python"
+        python_cmd = '"venv/bin/python"'
     
     print_colored("\nNext Steps:", Colors.OKCYAN)
     print_colored("1. Activate the virtual environment:", Colors.OKBLUE)
