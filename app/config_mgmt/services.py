@@ -177,45 +177,36 @@ class MCPTestService:
             Tuple of (success, message, user_info)
         """
         try:
-            # This is a placeholder for actual MCP client integration
-            # In the real implementation, this would use the mcp-atlassian client
+            from app.services.mcp_client import MCPClientManager
             
-            # Simulate connection test
-            await asyncio.sleep(0.1)  # Simulate network delay
+            # Create MCP client manager
+            client = MCPClientManager(config)
             
-            # Basic validation based on service type
+            # Test connection based on service type
             if service_type == 'jira':
-                if not config.jira_url or not config.get_jira_personal_token():
-                    return False, "Missing Jira URL or personal access token", {}
-                server_url = config.jira_url
-                token = config.get_jira_personal_token()
+                result = await client.test_jira_connection()
             elif service_type == 'confluence':
-                if not config.confluence_url or not config.get_confluence_personal_token():
-                    return False, "Missing Confluence URL or personal access token", {}
-                server_url = config.confluence_url
-                token = config.get_confluence_personal_token()
+                result = await client.test_confluence_connection()
             else:
-                # Legacy support
-                if not config.server_url or not config.get_personal_access_token():
-                    return False, "Missing server URL or personal access token", {}
-                server_url = config.server_url
-                token = config.get_personal_access_token()
+                # Legacy support - default to Jira
+                result = await client.test_jira_connection()
             
-            # Simulate successful connection
-            user_info = {
-                'user_name': f'test_user_{service_type}',
-                'user_id': f'test_id_{service_type}',
-                'display_name': f'Test User ({service_type.title()})',
-                'email': f'test@{service_type}.com',
-                'server_url': server_url,
-                'token_configured': bool(token)
-            }
-            
-            # Update last tested timestamp
-            config.last_tested = datetime.utcnow()
-            db.session.commit()
-            
-            return True, f"{service_type.title()} connection successful", user_info
+            if result.success:
+                user_info = {
+                    'user_name': result.user_name,
+                    'user_id': result.user_id,
+                    'display_name': result.display_name,
+                    'email': result.email,
+                    'server_info': result.server_info
+                }
+                
+                # Update last tested timestamp
+                config.last_tested = datetime.utcnow()
+                db.session.commit()
+                
+                return True, f"{service_type.title()} connection successful", user_info
+            else:
+                return False, result.error_message or "Connection failed", {}
             
         except Exception as e:
             current_app.logger.error(f"MCP connection test failed: {str(e)}")
