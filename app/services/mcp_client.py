@@ -2,28 +2,19 @@
 MCP Client Manager for JIA application.
 
 This module provides the MCPClientManager class for communicating with
-the mcp-atlassian server to interact with Jira and Confluence using the
-pip-installed mcp-atlassian library.
+the mcp-atlassian server using Streamable-HTTP transport with multi-user support.
 """
 
 import asyncio
 import json
 import logging
+import httpx
+import subprocess
+import time
 import os
 from typing import Dict, List, Optional, Tuple, Any, Union
 from datetime import datetime
 from dataclasses import dataclass
-
-# Import mcp-atlassian library components
-try:
-    from mcp_atlassian.server import create_server
-    from mcp_atlassian.jira import JiraClient
-    from mcp_atlassian.confluence import ConfluenceClient
-    from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
-    MCP_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"MCP Atlassian library not available: {e}")
-    MCP_AVAILABLE = False
 
 from app.models import MCPConfiguration
 from app.services.exceptions import MCPConnectionError, MCPValidationError, MCPTimeoutError
@@ -112,12 +103,173 @@ class TicketResult:
     error_message: Optional[str] = None
 
 
+class MCPServerManager:
+    """
+    Singleton class to manage the MCP Atlassian server process.
+    
+    This ensures we have only one server instance running that can handle
+    multiple users via HTTP transport with authentication headers.
+    """
+    
+    _instance = None
+    _server_process = None
+    _server_url = "http://localhost:8080"
+    _server_port = 8080
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MCPServerManager, cls).__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if not hasattr(self, 'initialized'):
+            self.initialized = True
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+    
+    async def ensure_server_running(self) -> bool:
+        """
+        Ensure the MCP server is running. Start it if not.
+        
+        Returns:
+            bool: True if server is running, False otherwise
+        """
+        try:
+            # Check if server is already running
+            if await self._is_server_healthy():
+                logger.info(f"✅ MCP server already running at {self._server_url}")
+                print(f"✅ MCP server already running at {self._server_url}")
+                return True
+            
+            # Start the server
+            logger.info("🚀 Starting MCP Atlassian server...")
+            print("🚀 Starting MCP Atlassian server...")
+            
+            # Start server with streamable-HTTP transport
+            cmd = [
+                "python", "-m", "mcp_atlassian",
+                "--transport", "streamable-http",
+                "--port", str(self._server_port),
+                "--host", "localhost"
+            ]
+            
+            logger.info(f"🔧 Starting server with command: {' '.join(cmd)}")
+            print(f"🔧 Starting server with command: {' '.join(cmd)}")
+            
+            self._server_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Wait for server to start
+            max_retries = 10
+            for i in range(max_retries):
+                await asyncio.sleep(1)
+                if await self._is_server_healthy():
+                    logger.info(f"✅ MCP server started successfully at {self._server_url}")
+                    print(f"✅ MCP server started successfully at {self._server_url}")
+                    return True
+                logger.info(f"⏳ Waiting for server to start... ({i+1}/{max_retries})")
+                print(f"⏳ Waiting for server to start... ({i+1}/{max_retries})")
+            
+            logger.error("❌ Failed to start MCP server")
+            print("❌ Failed to start MCP server")
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Error starting MCP server: {str(e)}")
+            print(f"❌ Error starting MCP server: {str(e)}")
+            return False
+    
+    async def _is_server_healthy(self) -> bool:
+        """Check if the MCP server is healthy."""
+        try:
+            response = await self._http_client.get(f"{self._server_url}/health", timeout=5.0)
+            return response.status_code == 200
+        except:
+            return False
+    
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any], auth_headers: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Call MCP tool via HTTP transport.
+        
+        Args:
+            tool_name: Name of the tool to call
+            arguments: Tool arguments
+            auth_headers: Authentication headers for the user
+            
+        Returns:
+            Tool response
+        """
+        try:
+            # Ensure server is running
+            if not await self.ensure_server_running():
+                raise MCPConnectionError("Failed to start MCP server")
+            
+            # Prepare MCP request
+            mcp_request = {
+                "jsonrpc": "2.0",
+                "id": int(time.time() * 1000),  # Use timestamp as ID
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }
+            
+            logger.info(f"📤 MCP Request: {tool_name} with args: {arguments}")
+            print(f"📤 MCP Request: {tool_name} with args: {arguments}")
+            
+            # Make HTTP request with authentication headers
+            response = await self._http_client.post(
+                f"{self._server_url}/mcp",
+                json=mcp_request,
+                headers=auth_headers
+            )
+            
+            if response.status_code != 200:
+                error_msg = f"HTTP {response.status_code}: {response.text}"
+                logger.error(f"❌ MCP HTTP Error: {error_msg}")
+                print(f"❌ MCP HTTP Error: {error_msg}")
+                raise MCPConnectionError(f"MCP HTTP error: {error_msg}")
+            
+            # Parse response
+            response_data = response.json()
+            logger.info(f"📥 MCP Response: {json.dumps(response_data, indent=2, default=str)}")
+            print(f"📥 MCP Response: {json.dumps(response_data, indent=2, default=str)}")
+            
+            if 'error' in response_data:
+                error_msg = response_data['error'].get('message', 'Unknown MCP error')
+                logger.error(f"❌ MCP Error: {error_msg}")
+                print(f"❌ MCP Error: {error_msg}")
+                raise MCPConnectionError(f"MCP error: {error_msg}")
+            
+            return response_data.get('result', {})
+            
+        except httpx.TimeoutException:
+            logger.error("⏰ MCP request timed out")
+            print("⏰ MCP request timed out")
+            raise MCPTimeoutError("MCP request timed out")
+        except Exception as e:
+            if isinstance(e, (MCPConnectionError, MCPTimeoutError)):
+                raise
+            logger.error(f"❌ MCP call failed: {str(e)}")
+            print(f"❌ MCP call failed: {str(e)}")
+            raise MCPConnectionError(f"MCP call failed: {str(e)}")
+    
+    def __del__(self):
+        """Clean up server process on deletion."""
+        if self._server_process:
+            self._server_process.terminate()
+
+
 class MCPClientManager:
     """
     Manager for MCP client communication with mcp-atlassian server.
     
     This class handles all communication with the mcp-atlassian server
-    for both Jira and Confluence operations.
+    using HTTP transport with per-user authentication headers.
     """
     
     def __init__(self, user_config: MCPConfiguration):
@@ -129,91 +281,48 @@ class MCPClientManager:
         """
         self.config = user_config
         self.timeout = 30  # Default timeout in seconds
-        self._jira_client = None
-        self._confluence_client = None
+        self._server_manager = MCPServerManager()
         
         # Validate configuration
         errors = self.config.validate()
         if errors:
             raise MCPValidationError(f"Invalid MCP configuration: {', '.join(errors)}")
     
-    def _get_jira_client(self) -> 'JiraClient':
+    def _get_auth_headers(self, service_type: str) -> Dict[str, str]:
         """
-        Get or create Jira client instance.
+        Get authentication headers for the specified service.
         
+        Args:
+            service_type: 'jira' or 'confluence'
+            
         Returns:
-            JiraClient instance configured with user credentials
-            
-        Raises:
-            MCPConnectionError: If client creation fails
+            Dict of HTTP headers for authentication
         """
-        if not MCP_AVAILABLE:
-            raise MCPConnectionError("MCP Atlassian library is not available. Please install mcp-atlassian.")
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "JIA-MCP-Client/1.0"
+        }
         
-        if not self.config.jira_url or not self.config.get_jira_personal_token():
-            raise MCPConnectionError("Jira URL and Personal Access Token are required")
+        if service_type == 'jira':
+            if self.config.jira_url and self.config.get_jira_personal_token():
+                headers.update({
+                    "X-Jira-URL": self.config.jira_url,
+                    "X-Jira-Personal-Token": self.config.get_jira_personal_token(),
+                    "X-Jira-SSL-Verify": str(self.config.jira_ssl_verify).lower()
+                })
+        elif service_type == 'confluence':
+            if self.config.confluence_url and self.config.get_confluence_personal_token():
+                headers.update({
+                    "X-Confluence-URL": self.config.confluence_url,
+                    "X-Confluence-Personal-Token": self.config.get_confluence_personal_token(),
+                    "X-Confluence-SSL-Verify": str(self.config.confluence_ssl_verify).lower()
+                })
         
-        try:
-            # For Server/Data Center deployments, use personal token
-            if self.config.get_jira_personal_token():
-                logger.info(f"🔧 Creating Jira client for Server/DC: {self.config.jira_url}")
-                print(f"🔧 Creating Jira client for Server/DC: {self.config.jira_url}")
-                
-                client = JiraClient(
-                    url=self.config.jira_url,
-                    personal_token=self.config.get_jira_personal_token(),
-                    ssl_verify=self.config.jira_ssl_verify
-                )
-            else:
-                raise MCPConnectionError("No valid authentication method found for Jira")
-            
-            return client
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create Jira client: {str(e)}")
-            print(f"❌ Failed to create Jira client: {str(e)}")
-            raise MCPConnectionError(f"Failed to create Jira client: {str(e)}")
-    
-    def _get_confluence_client(self) -> 'ConfluenceClient':
-        """
-        Get or create Confluence client instance.
-        
-        Returns:
-            ConfluenceClient instance configured with user credentials
-            
-        Raises:
-            MCPConnectionError: If client creation fails
-        """
-        if not MCP_AVAILABLE:
-            raise MCPConnectionError("MCP Atlassian library is not available. Please install mcp-atlassian.")
-        
-        if not self.config.confluence_url or not self.config.get_confluence_personal_token():
-            raise MCPConnectionError("Confluence URL and Personal Access Token are required")
-        
-        try:
-            # For Server/Data Center deployments, use personal token
-            if self.config.get_confluence_personal_token():
-                logger.info(f"🔧 Creating Confluence client for Server/DC: {self.config.confluence_url}")
-                print(f"🔧 Creating Confluence client for Server/DC: {self.config.confluence_url}")
-                
-                client = ConfluenceClient(
-                    url=self.config.confluence_url,
-                    personal_token=self.config.get_confluence_personal_token(),
-                    ssl_verify=self.config.confluence_ssl_verify
-                )
-            else:
-                raise MCPConnectionError("No valid authentication method found for Confluence")
-            
-            return client
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create Confluence client: {str(e)}")
-            print(f"❌ Failed to create Confluence client: {str(e)}")
-            raise MCPConnectionError(f"Failed to create Confluence client: {str(e)}")
+        return headers
     
     async def _call_jira_tool(self, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Call Jira tool using mcp-atlassian library.
+        Call Jira tool via HTTP transport with user authentication.
         
         Args:
             tool_name: Name of the Jira tool to call
@@ -221,70 +330,16 @@ class MCPClientManager:
             
         Returns:
             Dict containing the response from Jira API
-            
-        Raises:
-            MCPConnectionError: If call fails
-            MCPTimeoutError: If request times out
         """
         if arguments is None:
             arguments = {}
-            
-        try:
-            logger.info(f"🔧 Calling Jira tool: {tool_name} with args: {arguments}")
-            print(f"🔧 Calling Jira tool: {tool_name} with args: {arguments}")
-            
-            client = self._get_jira_client()
-            
-            # Map tool names to client methods
-            if tool_name == 'get_current_user' or tool_name == 'jira_get_user_profile':
-                response = await asyncio.wait_for(
-                    client.get_current_user(),
-                    timeout=self.timeout
-                )
-            elif tool_name == 'jira_get_agile_boards':
-                response = await asyncio.wait_for(
-                    client.get_boards(),
-                    timeout=self.timeout
-                )
-            elif tool_name == 'jira_get_sprints_from_board':
-                board_id = arguments.get('board_id')
-                if not board_id:
-                    raise MCPConnectionError("board_id is required for jira_get_sprints_from_board")
-                response = await asyncio.wait_for(
-                    client.get_sprints(board_id),
-                    timeout=self.timeout
-                )
-            else:
-                # For other tools, try to call them dynamically
-                method_name = tool_name.replace('jira_', '').replace('_', '')
-                if hasattr(client, method_name):
-                    method = getattr(client, method_name)
-                    response = await asyncio.wait_for(
-                        method(**arguments),
-                        timeout=self.timeout
-                    )
-                else:
-                    raise MCPConnectionError(f"Unknown Jira tool: {tool_name}")
-            
-            logger.info(f"✅ Jira tool response: {json.dumps(response, indent=2, default=str)}")
-            print(f"✅ Jira tool response: {json.dumps(response, indent=2, default=str)}")
-            
-            return response
-            
-        except asyncio.TimeoutError:
-            logger.error(f"⏰ Jira tool call timed out after {self.timeout} seconds")
-            print(f"⏰ Jira tool call timed out after {self.timeout} seconds")
-            raise MCPTimeoutError(f"Jira tool call timed out after {self.timeout} seconds")
-        except Exception as e:
-            if isinstance(e, (MCPConnectionError, MCPTimeoutError)):
-                raise
-            logger.error(f"❌ Jira tool call failed: {str(e)}")
-            print(f"❌ Jira tool call failed: {str(e)}")
-            raise MCPConnectionError(f"Jira tool call failed: {str(e)}")
+        
+        auth_headers = self._get_auth_headers('jira')
+        return await self._server_manager.call_tool(tool_name, arguments, auth_headers)
     
     async def _call_confluence_tool(self, tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Call Confluence tool using mcp-atlassian library.
+        Call Confluence tool via HTTP transport with user authentication.
         
         Args:
             tool_name: Name of the Confluence tool to call
@@ -292,53 +347,12 @@ class MCPClientManager:
             
         Returns:
             Dict containing the response from Confluence API
-            
-        Raises:
-            MCPConnectionError: If call fails
-            MCPTimeoutError: If request times out
         """
         if arguments is None:
             arguments = {}
-            
-        try:
-            logger.info(f"🔧 Calling Confluence tool: {tool_name} with args: {arguments}")
-            print(f"🔧 Calling Confluence tool: {tool_name} with args: {arguments}")
-            
-            client = self._get_confluence_client()
-            
-            # Map tool names to client methods
-            if tool_name == 'get_current_user':
-                response = await asyncio.wait_for(
-                    client.get_current_user(),
-                    timeout=self.timeout
-                )
-            else:
-                # For other tools, try to call them dynamically
-                method_name = tool_name.replace('confluence_', '').replace('_', '')
-                if hasattr(client, method_name):
-                    method = getattr(client, method_name)
-                    response = await asyncio.wait_for(
-                        method(**arguments),
-                        timeout=self.timeout
-                    )
-                else:
-                    raise MCPConnectionError(f"Unknown Confluence tool: {tool_name}")
-            
-            logger.info(f"✅ Confluence tool response: {json.dumps(response, indent=2, default=str)}")
-            print(f"✅ Confluence tool response: {json.dumps(response, indent=2, default=str)}")
-            
-            return response
-            
-        except asyncio.TimeoutError:
-            logger.error(f"⏰ Confluence tool call timed out after {self.timeout} seconds")
-            print(f"⏰ Confluence tool call timed out after {self.timeout} seconds")
-            raise MCPTimeoutError(f"Confluence tool call timed out after {self.timeout} seconds")
-        except Exception as e:
-            if isinstance(e, (MCPConnectionError, MCPTimeoutError)):
-                raise
-            logger.error(f"❌ Confluence tool call failed: {str(e)}")
-            print(f"❌ Confluence tool call failed: {str(e)}")
-            raise MCPConnectionError(f"Confluence tool call failed: {str(e)}")
+        
+        auth_headers = self._get_auth_headers('confluence')
+        return await self._server_manager.call_tool(tool_name, arguments, auth_headers)
     
     async def test_jira_connection(self) -> ConnectionResult:
         """
@@ -368,7 +382,7 @@ class MCPClientManager:
             
             # Call Jira tool to get current user information
             try:
-                response = await self._call_jira_tool('get_current_user')
+                response = await self._call_jira_tool('jira_get_user_profile')
                 logger.info(f"✅ Jira Response received: {json.dumps(response, indent=2, default=str)}")
                 print(f"✅ Jira Response received: {json.dumps(response, indent=2, default=str)}")
                 
@@ -471,9 +485,9 @@ class MCPClientManager:
             logger.info(f"🔍 Testing real Confluence connection to {self.config.confluence_url}")
             print(f"🔍 Testing real Confluence connection to {self.config.confluence_url}")
             
-            # Call Confluence tool to get current user information
+            # Call Confluence tool to get current user information  
             try:
-                response = await self._call_confluence_tool('get_current_user')
+                response = await self._call_confluence_tool('confluence_search_user')
                 logger.info(f"✅ Confluence Response received: {json.dumps(response, indent=2, default=str)}")
                 print(f"✅ Confluence Response received: {json.dumps(response, indent=2, default=str)}")
                 
