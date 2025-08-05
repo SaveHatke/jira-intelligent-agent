@@ -26,10 +26,16 @@ class MCPServerManager:
     def is_server_running(self):
         """Check if the MCP server is running."""
         try:
-            response = requests.get(f"{self.server_url}/health", timeout=5)
-            return response.status_code == 200
-        except:
+            # Try the MCP endpoint - should return error about content type but server is running
+            response = requests.get(f"{self.server_url}/mcp", timeout=5)
+            # If we get any response (even error), server is running
+            return True
+        except requests.exceptions.ConnectionError:
+            # Connection refused means server is not running
             return False
+        except:
+            # Any other response means server is running
+            return True
     
     def start_server(self):
         """Start the MCP server."""
@@ -42,10 +48,8 @@ class MCPServerManager:
         try:
             # Start the mcp-atlassian server with streamable-HTTP transport
             cmd = [
-                sys.executable, "-m", "mcp_atlassian",
-                "--transport", "streamable-http",
-                "--port", str(self.port),
-                "--host", self.host
+                sys.executable, "-c", 
+                f"import sys; sys.argv = ['mcp-atlassian', '--transport', 'streamable-http', '--port', '{self.port}', '--host', '{self.host}']; import mcp_atlassian; mcp_atlassian.main()"
             ]
             
             print(f"🔧 Command: {' '.join(cmd)}")
@@ -54,7 +58,7 @@ class MCPServerManager:
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Combine stderr with stdout
                 text=True
             )
             
@@ -71,6 +75,15 @@ class MCPServerManager:
                     print(f"📝 Server PID: {self.process.pid}")
                     return True
                 print(f"⏳ Waiting for server to start... ({i+1}/{max_retries})")
+                
+                # Check if process is still running
+                if self.process.poll() is not None:
+                    print("❌ Server process exited unexpectedly")
+                    # Get the output
+                    stdout, _ = self.process.communicate()
+                    if stdout:
+                        print(f"Server output:\n{stdout}")
+                    break
             
             print("❌ Failed to start MCP server")
             self.stop_server()
@@ -104,8 +117,15 @@ class MCPServerManager:
                 
                 if not stopped:
                     print("⚠️ Process didn't stop gracefully, forcing...")
-                    os.kill(pid, signal.SIGKILL)
-                    stopped = True
+                    try:
+                        # On Windows, use SIGTERM instead of SIGKILL
+                        if os.name == 'nt':
+                            os.kill(pid, signal.SIGTERM)
+                        else:
+                            os.kill(pid, signal.SIGKILL)
+                        stopped = True
+                    except:
+                        pass
                 
                 self.pid_file.unlink()
                 

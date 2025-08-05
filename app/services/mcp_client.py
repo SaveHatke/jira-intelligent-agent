@@ -113,7 +113,7 @@ class MCPServerManager:
     
     _instance = None
     _server_process = None
-    _server_url = "http://localhost:8080"
+    _server_url = "http://localhost:8080/mcp"
     _server_port = 8080
     
     def __new__(cls):
@@ -185,8 +185,9 @@ class MCPServerManager:
     async def _is_server_healthy(self) -> bool:
         """Check if the MCP server is healthy."""
         try:
-            response = await self._http_client.get(f"{self._server_url}/health", timeout=5.0)
-            return response.status_code == 200
+            # Try the MCP endpoint - it should return 405 for GET requests (Method Not Allowed)
+            response = await self._http_client.get(self._server_url, timeout=5.0)
+            return response.status_code in [200, 405]  # 405 is expected for GET on MCP endpoint
         except:
             return False
     
@@ -223,7 +224,7 @@ class MCPServerManager:
             
             # Make HTTP request with authentication headers
             response = await self._http_client.post(
-                f"{self._server_url}/mcp",
+                self._server_url,  # Already includes /mcp path
                 json=mcp_request,
                 headers=auth_headers
             )
@@ -292,6 +293,8 @@ class MCPClientManager:
         """
         Get authentication headers for the specified service.
         
+        Based on mcp-atlassian documentation for multi-user authentication.
+        
         Args:
             service_type: 'jira' or 'confluence'
             
@@ -305,17 +308,19 @@ class MCPClientManager:
         
         if service_type == 'jira':
             if self.config.jira_url and self.config.get_jira_personal_token():
+                # For Server/Data Center with Personal Access Token
                 headers.update({
-                    "X-Jira-URL": self.config.jira_url,
-                    "X-Jira-Personal-Token": self.config.get_jira_personal_token(),
-                    "X-Jira-SSL-Verify": str(self.config.jira_ssl_verify).lower()
+                    "Authorization": f"Bearer {self.config.get_jira_personal_token()}",
+                    "X-Atlassian-Jira-URL": self.config.jira_url,
+                    "X-Atlassian-Service": "jira"
                 })
         elif service_type == 'confluence':
             if self.config.confluence_url and self.config.get_confluence_personal_token():
+                # For Server/Data Center with Personal Access Token
                 headers.update({
-                    "X-Confluence-URL": self.config.confluence_url,
-                    "X-Confluence-Personal-Token": self.config.get_confluence_personal_token(),
-                    "X-Confluence-SSL-Verify": str(self.config.confluence_ssl_verify).lower()
+                    "Authorization": f"Bearer {self.config.get_confluence_personal_token()}",
+                    "X-Atlassian-Confluence-URL": self.config.confluence_url,
+                    "X-Atlassian-Service": "confluence"
                 })
         
         return headers
@@ -412,8 +417,36 @@ class MCPClientManager:
                         ''
                     )
                     
+                    # Extract additional user details for comprehensive display
+                    user_details = {
+                        'display_name': user_name,
+                        'user_id': user_id,
+                        'email': email,
+                        'username': user_data.get('name', ''),
+                        'active': user_data.get('active', True),
+                        'timezone': user_data.get('timeZone', ''),
+                        'locale': user_data.get('locale', ''),
+                        'groups': user_data.get('groups', {}).get('items', []) if user_data.get('groups') else [],
+                        'application_roles': user_data.get('applicationRoles', {}).get('items', []) if user_data.get('applicationRoles') else [],
+                        'last_login': user_data.get('lastLoginTime', ''),
+                        'avatar_url': user_data.get('avatarUrls', {}).get('48x48', '') if user_data.get('avatarUrls') else ''
+                    }
+                    
                     logger.info(f"✅ Jira connection successful - User: {user_name} ({email})")
                     print(f"✅ Jira connection successful - User: {user_name} ({email})")
+                    print(f"📋 User Details:")
+                    print(f"  - Display Name: {user_details['display_name']}")
+                    print(f"  - Username: {user_details['username']}")
+                    print(f"  - Email: {user_details['email']}")
+                    print(f"  - User ID: {user_details['user_id']}")
+                    print(f"  - Active: {user_details['active']}")
+                    print(f"  - Timezone: {user_details['timezone']}")
+                    print(f"  - Locale: {user_details['locale']}")
+                    if user_details['groups']:
+                        group_names = [group.get('name', 'Unknown') for group in user_details['groups'][:5]]  # Show first 5 groups
+                        print(f"  - Groups: {', '.join(group_names)}")
+                    if user_details['last_login']:
+                        print(f"  - Last Login: {user_details['last_login']}")
                     
                     return ConnectionResult(
                         success=True,
@@ -425,6 +458,7 @@ class MCPClientManager:
                             'server_url': self.config.jira_url,
                             'ssl_verify': self.config.jira_ssl_verify,
                             'connection_time': datetime.utcnow().isoformat(),
+                            'user_details': user_details,
                             'raw_response': response
                         }
                     )
@@ -517,8 +551,37 @@ class MCPClientManager:
                         ''
                     )
                     
+                    # Extract additional user details for comprehensive display
+                    user_details = {
+                        'display_name': user_name,
+                        'user_id': user_id,
+                        'email': email,
+                        'username': user_data.get('username', ''),
+                        'full_name': user_data.get('fullName', ''),
+                        'status': user_data.get('status', ''),
+                        'user_type': user_data.get('type', ''),
+                        'profile_picture': user_data.get('profilePicture', {}).get('path', '') if user_data.get('profilePicture') else '',
+                        'personal_space': user_data.get('personalSpace', {}).get('key', '') if user_data.get('personalSpace') else '',
+                        'operations': user_data.get('operations', []),
+                        'details': user_data.get('details', {}),
+                        'expandable': user_data.get('_expandable', {})
+                    }
+                    
                     logger.info(f"✅ Confluence connection successful - User: {user_name} ({email})")
                     print(f"✅ Confluence connection successful - User: {user_name} ({email})")
+                    print(f"📋 User Details:")
+                    print(f"  - Display Name: {user_details['display_name']}")
+                    print(f"  - Username: {user_details['username']}")
+                    print(f"  - Full Name: {user_details['full_name']}")
+                    print(f"  - Email: {user_details['email']}")
+                    print(f"  - User ID: {user_details['user_id']}")
+                    print(f"  - Status: {user_details['status']}")
+                    print(f"  - User Type: {user_details['user_type']}")
+                    if user_details['personal_space']:
+                        print(f"  - Personal Space: {user_details['personal_space']}")
+                    if user_details['operations']:
+                        operations = [op.get('operation', 'Unknown') for op in user_details['operations'][:3]]  # Show first 3 operations
+                        print(f"  - Available Operations: {', '.join(operations)}")
                     
                     return ConnectionResult(
                         success=True,
@@ -530,6 +593,7 @@ class MCPClientManager:
                             'server_url': self.config.confluence_url,
                             'ssl_verify': self.config.confluence_ssl_verify,
                             'connection_time': datetime.utcnow().isoformat(),
+                            'user_details': user_details,
                             'raw_response': response
                         }
                     )

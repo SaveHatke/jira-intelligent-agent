@@ -200,11 +200,19 @@ class MCPTestService:
                     'server_info': result.server_info
                 }
                 
+                # Add detailed user information if available
+                if result.server_info and 'user_details' in result.server_info:
+                    user_info['user_details'] = result.server_info['user_details']
+                
                 # Update last tested timestamp
                 config.last_tested = datetime.utcnow()
                 db.session.commit()
                 
-                return True, f"{service_type.title()} connection successful", user_info
+                success_message = f"{service_type.title()} connection successful! Connected as {result.display_name}"
+                if result.email:
+                    success_message += f" ({result.email})"
+                
+                return True, success_message, user_info
             else:
                 return False, result.error_message or "Connection failed", {}
             
